@@ -1,34 +1,72 @@
 import { useState, useEffect } from 'react';
-import { ethers } from "ethers";
+import { useStellarWallet } from './StellarWalletProvider';
+import StellarSdk from '@stellar/stellar-sdk';
+import axios from 'axios';
 import loaderGif from './loader.gif';
 import './MyPurchases.css';
 
-export default function MyPurchases({ marketplace, nft, account }) {
+export default function MyPurchases() {
+  const { publicKey, isConnected, server } = useStellarWallet();
   const [loading, setLoading] = useState(true);
   const [purchases, setPurchases] = useState([]);
   
   const loadPurchasedItems = async () => {
-    try {
-      const filter = marketplace.filters.Bought(null, null, null, null, null, account);
-      const results = await marketplace.queryFilter(filter);
-      const purchases = await Promise.all(results.map(async i => {
-        i = i.args;
-        const uri = await nft.tokenURI(i.tokenId);
-        const response = await fetch(uri);
-        const metadata = await response.json();
-        const totalPrice = await marketplace.getTotalPrice(i.itemId);
-        let purchasedItem = {
-          totalPrice,
-          price: i.price,
-          itemId: i.itemId,
-          name: metadata.name,
-          description: metadata.description,
-          image: metadata.image
-        };
-        return purchasedItem;
-      }));
+    if (!isConnected || !publicKey) {
       setLoading(false);
-      setPurchases(purchases);
+      return;
+    }
+
+    try {
+      const stellarServer = new StellarSdk.Server('https://horizon-testnet.stellar.org');
+      
+      // Get the account's transactions
+      const account = await stellarServer.loadAccount(publicKey);
+      
+      // Filter for NFT purchase transactions
+      const purchaseTransactions = [];
+      
+      // Look for transactions where the account received an NFT
+      for (const balance of account.balances) {
+        if (balance.asset_type !== 'native' && balance.balance !== '0') {
+          // This is a non-native asset (likely an NFT)
+          try {
+            // Get asset details
+            const asset = new StellarSdk.Asset(balance.asset_code, balance.asset_issuer);
+            
+            // Get the asset's metadata if available
+            const data = account.data_attr;
+            if (data && data[`nft_metadata_${balance.asset_code}`]) {
+              const metadataUrl = Buffer.from(data[`nft_metadata_${balance.asset_code}`], 'base64').toString('utf-8');
+              const response = await axios.get(metadataUrl);
+              const metadata = response.data;
+              
+              purchaseTransactions.push({
+                id: `${balance.asset_code}-${balance.asset_issuer}`,
+                name: metadata.name || balance.asset_code,
+                description: metadata.description || 'No description available',
+                image: metadata.image || 'https://via.placeholder.com/300',
+                price: '0', // Price implementation will come in next phase
+                balance: balance.balance
+              });
+            } else {
+              // Fallback if metadata not available
+              purchaseTransactions.push({
+                id: `${balance.asset_code}-${balance.asset_issuer}`,
+                name: balance.asset_code,
+                description: 'No description available',
+                image: 'https://via.placeholder.com/300',
+                price: '0',
+                balance: balance.balance
+              });
+            }
+          } catch (error) {
+            console.error('Error loading asset details:', error);
+          }
+        }
+      }
+      
+      setPurchases(purchaseTransactions);
+      setLoading(false);
     } catch (error) {
       console.error("Error loading purchased items: ", error);
       setLoading(false);
@@ -36,10 +74,12 @@ export default function MyPurchases({ marketplace, nft, account }) {
   };
 
   useEffect(() => {
-    if (account && marketplace && nft) {
+    if (isConnected && publicKey) {
       loadPurchasedItems();
+    } else {
+      setLoading(false);
     }
-  }, [account, marketplace, nft]);
+  }, [isConnected, publicKey]);
 
   if (loading) return (
     <main style={{ padding: "1rem 0", textAlign: 'center' }}>
@@ -55,7 +95,8 @@ export default function MyPurchases({ marketplace, nft, account }) {
             <div key={idx} className="card-custom-purchase">
               <img src={item.image} alt={item.name} className="card-img-purchase" />
               <div className="card-footer-custom-purchase">
-                <span className="card-text-purchase">{ethers.utils.formatEther(item.totalPrice)} ETH</span>
+                <span className="card-text-purchase">{item.name}</span>
+                <span className="card-text-purchase">Balance: {item.balance}</span>
               </div>
             </div>
           ))}

@@ -5,22 +5,16 @@ module.exports = {
     configure: {
       resolve: {
         fallback: {
-          path: require.resolve('path-browserify')
-        },
-        alias: {
-          assert: 'assert',
-          buffer: 'buffer',
-          crypto: 'crypto-browserify',
-          http: 'stream-http',
-          https: 'https-browserify',
-          os: 'os-browserify/browser',
-          process: 'process/browser',
-          stream: 'stream-browserify',
-          util: 'util'
+          path: require.resolve('path-browserify'),
+          crypto: require.resolve('crypto-browserify'),
+          stream: require.resolve('stream-browserify'),
+          assert: require.resolve('assert'),
+          http: require.resolve('stream-http'),
+          https: require.resolve('https-browserify'),
+          os: require.resolve('os-browserify/browser'),
+          buffer: require.resolve('buffer'),
+          util: require.resolve('util')
         }
-      },
-      experiments: {
-        asyncWebAssembly: true
       },
       plugins: [
         new webpack.ProvidePlugin({

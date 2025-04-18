@@ -1,18 +1,11 @@
 import './Navbar.css';
 import { Link } from "react-router-dom";
 import { Navbar, Nav, Button, Container } from 'react-bootstrap';
-import { useConnectWallet } from '@web3-onboard/react';
+import { useStellarWallet } from './StellarWalletProvider';
 import logo from './logo.png';
 
-const Navigation = ({ web3Handler, account }) => {
-    const [{ wallet, connecting }, connect, disconnect] = useConnectWallet();
-
-    const handleConnect = async () => {
-        const [connectedWallet] = await connect();
-        if (connectedWallet) {
-            await web3Handler(connectedWallet);
-        }
-    };
+const Navigation = () => {
+    const { publicKey, isConnected, connectWallet, disconnectWallet } = useStellarWallet();
 
     return (
         <Navbar expand="lg" bg="secondary" variant="dark" className="custom-navbar">
@@ -27,23 +20,28 @@ const Navigation = ({ web3Handler, account }) => {
                         <Nav.Link as={Link} to="/create">Create</Nav.Link>
                         <Nav.Link as={Link} to="/my-listed-items">My Listed Items</Nav.Link>
                         <Nav.Link as={Link} to="/my-purchases">My Purchases</Nav.Link>
+                        <Nav.Link as={Link} to="/stellar-setup">Stellar Setup</Nav.Link>
                     </Nav>
                 </Navbar.Collapse>
                 <div className="connect-wallet-wrapper">
-                    {account && (
-                        <Nav.Link
-                            href={`https://etherscan.io/address/${account}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="button nav-button btn-sm mx-4">
-                            <Button variant="outline-light">
-                                {account.slice(0, 5) + '...' + account.slice(38, 42)}
+                    {isConnected ? (
+                        <div className="d-flex align-items-center">
+                            <Nav.Link
+                                href={`https://stellar.expert/explorer/testnet/account/${publicKey}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="button nav-button btn-sm mx-4">
+                                <Button variant="outline-light">
+                                    {publicKey.slice(0, 5) + '...' + publicKey.slice(-5)}
+                                </Button>
+                            </Nav.Link>
+                            <Button onClick={disconnectWallet} variant="outline-danger" size="sm">
+                                Disconnect
                             </Button>
-                        </Nav.Link>
-                    )}
-                    {!account && (
-                        <Button onClick={handleConnect} variant="outline-light" className="connect-wallet-button">
-                            {connecting ? 'Connecting...' : 'Connect Wallet'}
+                        </div>
+                    ) : (
+                        <Button onClick={connectWallet} variant="outline-light" className="connect-wallet-button">
+                            Connect Stellar Wallet
                         </Button>
                     )}
                 </div>

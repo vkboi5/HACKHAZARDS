@@ -1,436 +1,356 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Container, Row, Col, Form, Button, Alert } from 'react-bootstrap';
+import * as StellarSdk from '@stellar/stellar-sdk';
+import { useStellarWallet } from './StellarWalletProvider';
 import axios from 'axios';
-import { useState, useRef, useEffect } from 'react';
-import { ethers } from "ethers";
-import { Row, Col, Form, Button, Spinner } from 'react-bootstrap';
-import { ToastContainer, toast } from 'react-toastify';
-import { FaTag, FaGavel, FaUsers } from 'react-icons/fa';
-import Confetti from 'react-dom-confetti';
-import 'react-toastify/dist/ReactToastify.css';
 import './Create.css';
-import nftImage from './arebg.png'; // Replace with your image path
 
-const Create = ({ marketplace, nft }) => {
-  const [fileImg, setFile] = useState(null);
-  const [fileName, setFileName] = useState("");
-  const [name, setName] = useState("");
-  const [desc, setDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [minBid, setMinBid] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+const Create = () => {
+  const navigate = useNavigate();
+  const { publicKey, isConnected } = useStellarWallet();
+  const [formInput, setFormInput] = useState({
+    price: '',
+    name: '',
+    description: '',
+    assetCode: '',
+  });
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileUrl, setFileUrl] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [selectedMethod, setSelectedMethod] = useState('fixed');
-  const [showConfetti, setShowConfetti] = useState(false);
-  const [isNameValid, setIsNameValid] = useState(true);
-  const [isPriceValid, setIsPriceValid] = useState(true);
-  const [isFileValid, setIsFileValid] = useState(true);
-  const [isMinBidValid, setIsMinBidValid] = useState(true);
-  const [isStartDateValid, setIsStartDateValid] = useState(true);
-  const [isEndDateValid, setIsEndDateValid] = useState(true);
-  const fileInputRef = useRef(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [statusMsg, setStatusMsg] = useState('');
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    setFile(file);
-    setFileName(file ? file.name : "");
-    setIsFileValid(true);
+  // Handle file selection
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      // Create preview URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
-  useEffect(() => {
-    setIsNameValid(true);
-    setIsPriceValid(true);
-    setIsFileValid(true);
-    setIsMinBidValid(true);
-    setIsStartDateValid(true);
-    setIsEndDateValid(true);
-  }, []);
-
-  const validateForm = () => {
-    let isValid = true;
-
-    if (!name) {
-      setIsNameValid(false);
-      isValid = false;
-    }
-
-    if (!fileImg) {
-      setIsFileValid(false);
-      isValid = false;
-    }
-
-    if (selectedMethod === 'fixed' && !price) {
-      setIsPriceValid(false);
-      isValid = false;
-    }
-
-    if ((selectedMethod === 'auction' || selectedMethod === 'bids') && !minBid) {
-      setIsMinBidValid(false);
-      isValid = false;
-    }
-
-    if ((selectedMethod === 'auction' || selectedMethod === 'bids') && !startDate) {
-      setIsStartDateValid(false);
-      isValid = false;
-    }
-
-    if ((selectedMethod === 'auction' || selectedMethod === 'bids') && !endDate) {
-      setIsEndDateValid(false);
-      isValid = false;
-    }
-
-    if (selectedMethod === 'bids' && !price) {
-      setIsPriceValid(false);
-      isValid = false;
-    }
-
-    return isValid;
-  };
-
-  const sendJSONtoIPFS = async (ImgHash, walletAddress) => {
+  // Upload image to IPFS via Pinata
+  const uploadImage = async (file) => {
+    // Direct hardcoded Pinata credentials - use for testing only
+    const PINATA_API_KEY = 'c9588b8a340c881748d8';
+    const PINATA_API_SECRET = '0dfd51d22c1641e149bc0acc4dc366592a84e2a94d6ab83645f9ca925d0e4ce4';
+    
     try {
-      const resJSON = await axios({
-        method: "post",
-        url: "https://api.pinata.cloud/pinning/pinJsonToIPFS",
-        data: {
-          name,
-          description: desc,
-          image: ImgHash,
-          creator: walletAddress
-        },
-        headers: {
-          pinata_api_key: process.env.REACT_APP_PINATA_API_KEY,
-          pinata_secret_api_key: process.env.REACT_APP_PINATA_SECRET_API_KEY
+      setStatusMsg('Uploading image...');
+      
+      // Create a local URL first as a fallback
+      const localUrl = URL.createObjectURL(file);
+      
+      // Try to upload to Pinata
+      try {
+        console.log('Attempting to upload to Pinata...');
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'pinata_api_key': PINATA_API_KEY,
+            'pinata_secret_api_key': PINATA_API_SECRET
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity
+        });
+        
+        if (response.data && response.data.IpfsHash) {
+          const ipfsUrl = `https://gateway.pinata.cloud/ipfs/${response.data.IpfsHash}`;
+          console.log('Successfully uploaded to IPFS:', ipfsUrl);
+          return ipfsUrl;
         }
-      });
-
-      const tokenURI = `https://gateway.pinata.cloud/ipfs/${resJSON.data.IpfsHash}`;
-      console.log("Token URI", tokenURI);
-      mintThenList(tokenURI, walletAddress);
+      } catch (error) {
+        console.error('Failed to upload to Pinata:', error.message);
+        console.log('Using local URL as fallback');
+      }
+      
+      // Return local URL if Pinata upload fails
+      return localUrl;
     } catch (error) {
-      console.log("JSON to IPFS: ", error);
-      setIsLoading(false);
+      console.error('Error in uploadImage:', error);
+      // Use object URL as fallback
+      return URL.createObjectURL(file);
     }
   };
 
-  const sendFileToIPFS = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    // Validation check
-    if (!name || !fileImg || (selectedMethod === 'fixed' && !price) ||
-        (selectedMethod === 'auction' && (!minBid || !startDate || !endDate)) ||
-        (selectedMethod === 'bids' && (!price || !minBid || !startDate || !endDate))) {
+  // Upload metadata to IPFS via Pinata
+  const uploadMetadata = async (metadata) => {
+    // Direct hardcoded Pinata credentials - use for testing only
+    const PINATA_API_KEY = 'c9588b8a340c881748d8';
+    const PINATA_API_SECRET = '0dfd51d22c1641e149bc0acc4dc366592a84e2a94d6ab83645f9ca925d0e4ce4';
+    
+    try {
+      setStatusMsg('Uploading metadata...');
+      console.log('Uploading metadata to Pinata...');
       
-      setIsNameValid(!!name);
-      setIsFileValid(!!fileImg);
-      if (selectedMethod === 'fixed') {
-        setIsPriceValid(!!price);
-      } else if (selectedMethod === 'auction' || selectedMethod === 'bids') {
-        setIsMinBidValid(!!minBid);
-        setIsStartDateValid(!!startDate);
-        setIsEndDateValid(!!endDate);
-        if (selectedMethod === 'bids') {
-          setIsPriceValid(!!price);
+      const response = await axios.post('https://api.pinata.cloud/pinning/pinJSONToIPFS', metadata, {
+        headers: {
+          'Content-Type': 'application/json',
+          'pinata_api_key': PINATA_API_KEY,
+          'pinata_secret_api_key': PINATA_API_SECRET
         }
-      }
-      toast.error("Please fill in all required fields!", {
-        position: "top-center"
       });
-      setIsLoading(false);
+
+      if (response.data && response.data.IpfsHash) {
+        const metadataUrl = `https://gateway.pinata.cloud/ipfs/${response.data.IpfsHash}`;
+        console.log('Metadata URL:', metadataUrl);
+        return metadataUrl;
+      }
+      
+      throw new Error('No IPFS hash returned from Pinata');
+    } catch (error) {
+      console.error('Error uploading metadata:', error);
+      throw error;
+    }
+  };
+
+  async function createNFT() {
+    const { name, description, price, assetCode } = formInput;
+    
+    // Form validation
+    if (!name || !description || !price || !selectedFile) {
+      setErrorMsg('Please fill all fields and select an image');
+      return;
+    }
+    
+    if (!assetCode || assetCode.length < 1 || assetCode.length > 12) {
+      setErrorMsg('Asset code must be between 1 and 12 characters');
+      return;
+    }
+    
+    if (!isConnected) {
+      setErrorMsg('Please connect your Stellar wallet first');
       return;
     }
 
-    if (fileImg) {
-      try {
-        const formData = new FormData();
-        formData.append("file", fileImg);
-
-        const resFile = await axios({
-          method: "post",
-          url: "https://api.pinata.cloud/pinning/pinFileToIPFS",
-          data: formData,
-          headers: {
-            pinata_api_key: process.env.REACT_APP_PINATA_API_KEY,
-            pinata_secret_api_key: process.env.REACT_APP_PINATA_SECRET_API_KEY,
-            "Content-Type": "multipart/form-data"
-          }
-        });
-
-        const ImgHash = `https://gateway.pinata.cloud/ipfs/${resFile.data.IpfsHash}`;
-        console.log(ImgHash);
-
-        // Get the user's wallet address
-        const signer = nft.signer;
-        const walletAddress = await signer.getAddress();
-
-        sendJSONtoIPFS(ImgHash, walletAddress);
-      } catch (error) {
-        console.log("File to IPFS: ", error);
-        setIsLoading(false);
-      }
-    }
-  };
-
-  const mintThenList = async (uri, walletAddress) => {
+    setIsLoading(true);
+    setErrorMsg('');
+    
     try {
-      // mint nft
-      await (await nft.mint(uri)).wait();
-      // get tokenId of new nft
-      const id = await nft.tokenCount();
-      // approve marketplace to spend nft
-      await (await nft.setApprovalForAll(marketplace.address, true)).wait();
+      // Upload image to IPFS
+      const imageUrl = await uploadImage(selectedFile);
+      setFileUrl(imageUrl);
+      
+      // Create metadata
+      const metadata = {
+        name,
+        description,
+        image: imageUrl,
+        price,
+        creator: publicKey,
+        created_at: new Date().toISOString()
+      };
 
-      if (selectedMethod === 'fixed') {
-        // add nft to marketplace as fixed price item
-        const listingPrice = ethers.utils.parseEther(price.toString());
-        await (await marketplace.makeItem(nft.address, id, listingPrice)).wait();
-        // Show success notification
-        toast.success("NFT Listed Successfully!", {
-          position: "top-center"
-        });
-      } else if (selectedMethod === 'auction') {
-        // add nft to marketplace as auction item
-        const auctionDuration = Math.floor((new Date(endDate).getTime() - new Date().getTime()) / 1000);
-        await (await marketplace.createAuction(nft.address, id, auctionDuration)).wait();
-        // Show success notification
-        toast.success("NFT Auction Created Successfully!", {
-          position: "top-center"
-        });
-      } else if (selectedMethod === 'bids') {
-        // add nft to marketplace as bids item
-        const auctionDuration = Math.floor((new Date(endDate).getTime() - new Date().getTime()) / 1000);
-        await (await marketplace.createAuction(nft.address, id, auctionDuration)).wait();
-        // Show success notification
-        toast.success("NFT Bids Created Successfully!", {
-          position: "top-center"
-        });
+      // Upload metadata to IPFS
+      const metadataUrl = await uploadMetadata(metadata);
+      
+      // Create NFT on Stellar
+      setStatusMsg('Creating NFT on Stellar...');
+      
+      // Get the source keypair from localStorage
+      const sourceSecretKey = localStorage.getItem('stellarSecretKey');
+      if (!sourceSecretKey) {
+        throw new Error('Secret key not found. Please reconnect your wallet.');
       }
+      
+      const sourceKeypair = StellarSdk.Keypair.fromSecret(sourceSecretKey);
+      const sourcePublicKey = sourceKeypair.publicKey();
+      
+      // Validate the asset code (alphanumeric only)
+      const validAssetCode = assetCode.replace(/[^a-zA-Z0-9]/g, '');
+      
+      // Initialize Stellar server
+      const server = new StellarSdk.Horizon.Server('https://horizon-testnet.stellar.org');
+      
+      // Check if account exists
+      try {
+        await server.loadAccount(sourcePublicKey);
+      } catch (accountError) {
+        setStatusMsg('Account not found. Attempting to fund with Friendbot...');
+        
+        // Fund the account using Friendbot
+        try {
+          await axios.get(`https://friendbot.stellar.org?addr=${sourcePublicKey}`);
+          setStatusMsg('Account funded! Continuing with NFT creation...');
+        } catch (fundError) {
+          throw new Error('Failed to create account. Please fund your account with XLM first.');
+        }
+      }
+      
+      // Load the account again now that it should exist
+      const account = await server.loadAccount(sourcePublicKey);
+      
+      // Create the NFT asset
+      const asset = new StellarSdk.Asset(validAssetCode, sourcePublicKey);
+      
+      // Create and sign transaction
+      setStatusMsg('Creating and signing transaction...');
+      const transaction = new StellarSdk.TransactionBuilder(account, {
+        fee: StellarSdk.BASE_FEE,
+        networkPassphrase: StellarSdk.Networks.TESTNET
+      })
+        .addOperation(StellarSdk.Operation.manageData({
+          name: `nft_${validAssetCode}_metadata`,
+          value: metadataUrl.length <= 64 ? metadataUrl : metadataUrl.substring(0, 64)
+        }))
+        .addOperation(StellarSdk.Operation.changeTrust({
+          asset: asset,
+          limit: '1' // Set limit to 1 for NFT
+        }))
+        .setTimeout(30)
+        .build();
 
-      setIsSuccess(true);
-      setShowConfetti(true); // Show confetti
+      transaction.sign(sourceKeypair);
+      
+      // Submit transaction
+      setStatusMsg('Submitting transaction...');
+      await server.submitTransaction(transaction);
+      
+      setStatusMsg('NFT created successfully!');
       setTimeout(() => {
-        resetForm();
-        setShowConfetti(false); // Hide confetti after some time
-      }, 5000); // Display success for 5 seconds before resetting the form and hiding confetti
+        navigate('/');
+      }, 2000);
     } catch (error) {
-      console.log("Minting/Listing: ", error);
-      toast.error("Failed to list NFT.", {
-        position: "top-center"
-      });
+      console.error('Error creating NFT: ', error);
+      setErrorMsg(`Error creating NFT: ${error.message}`);
+    } finally {
       setIsLoading(false);
     }
-  };
-
-  const resetForm = () => {
-    setFile(null);
-    setFileName("");
-    setName("");
-    setDescription("");
-    setPrice("");
-    setMinBid("");
-    setStartDate("");
-    setEndDate("");
-    setIsLoading(false);
-    setIsSuccess(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = null;
-    }
-  };
-
-  const confettiConfig = {
-    angle: 90,
-    spread: 360,
-    startVelocity: 40,
-    elementCount: 79,
-    dragFriction: 0.12,
-    duration: 3000,
-    stagger: 3,
-    width: "10px",
-    height: "10px",
-    colors: ["#a864fd", "#29cdff", "#78ff44", "#ff718d", "#fdff6a"]
-  };
+  }
 
   return (
-    <div className="container-fluid mt-5">
-      <ToastContainer />
-      <div className="row">
-        <div className="col-lg-3">
-          <div className="image-container">
-            <img src={nftImage} alt="NFT Image" />
-          </div>
-        </div>
-        <div className="col-lg-9">
-          <main role="main" className="mx-auto" style={{ maxWidth: '1000px' }}>
-            <div className="content mx-auto">
-              <Row className="g-4">
-                <Form onSubmit={sendFileToIPFS}>
-                  <Form.Group controlId="formFile" className="mb-3">
-                    <div className="upload-container">
-                      <label htmlFor="file-upload" className="custom-file-upload">
-                        Upload file
-                      </label>
-                      <span>{fileName || "PNG, JPG, GIF, WEBP or MP4. Max 200mb."}</span>
-                      <input
-                        id="file-upload"
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        type="file"
-                        className={`form-control ${!isFileValid ? 'is-invalid' : ''}`}
-                      />
-                      <div className="invalid-feedback">
-                        Please upload an image.
-                      </div>
-                    </div>
-                  </Form.Group>
-  
-                  {/* Select Method Section */}
-                  <div className="method-selection mb-3">
-                    <Form.Label>Select method</Form.Label>
-                    <div className="method-options d-flex">
-                      <button
-                        type="button"
-                        className={`me-2 method-option ${selectedMethod === 'fixed' ? 'selected' : ''}`}
-                        onClick={() => setSelectedMethod('fixed')}
-                      >
-                        <FaTag /> Fixed Price
-                      </button>
-                      <button
-                        type="button"
-                        className={`me-2 method-option ${selectedMethod === 'auction' ? 'selected' : ''}`}
-                        onClick={() => setSelectedMethod('auction')}
-                      >
-                        <FaGavel /> Time Auctions
-                      </button>
-                      <button
-                        type="button"
-                        className={`me-2 method-option ${selectedMethod === 'bids' ? 'selected' : ''}`}
-                        onClick={() => setSelectedMethod('bids')}
-                      >
-                        <FaUsers /> Open For Bids
-                      </button>
-                    </div>
-                  </div>
-  
-                  {selectedMethod === 'fixed' && (
-                    <Form.Group controlId="formPrice" className="mb-3">
-                      <Form.Control
-                        type="text"
-                        placeholder="Enter price in ETH"
-                        value={price}
-                        onChange={(e) => setPrice(e.target.value)}
-                        className={`form-control ${!isPriceValid ? 'is-invalid' : ''}`}
-                      />
-                      <div className="invalid-feedback">
-                        Please enter a valid price.
-                      </div>
-                    </Form.Group>
+    <div className="create-nft-container">
+      <Container className="create-nft-content">
+        <Row>
+          <Col md={7} className="create-nft-form">
+            <h1>Create New NFT</h1>
+            
+            {errorMsg && <Alert variant="danger">{errorMsg}</Alert>}
+            {statusMsg && <Alert variant="info">{statusMsg}</Alert>}
+            
+            <Form>
+              <Form.Group className="mb-3">
+                <Form.Label>NFT Name</Form.Label>
+                <Form.Control
+                  type="text"
+                  placeholder="NFT Name"
+                  onChange={e => setFormInput({ ...formInput, name: e.target.value })}
+                />
+              </Form.Group>
+
+              <Form.Group className="mb-3">
+                <Form.Label>Description</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={3}
+                  placeholder="NFT Description"
+                  onChange={e => setFormInput({ ...formInput, description: e.target.value })}
+                />
+              </Form.Group>
+
+              <Form.Group className="mb-3">
+                <Form.Label>Price (XLM)</Form.Label>
+                <Form.Control
+                  type="number"
+                  placeholder="NFT Price in XLM"
+                  onChange={e => setFormInput({ ...formInput, price: e.target.value })}
+                />
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Asset Code (max 12 characters)</Form.Label>
+                <Form.Control
+                  type="text"
+                  placeholder="Asset Code (e.g., MYNFT)"
+                  maxLength={12}
+                  onChange={e => setFormInput({ ...formInput, assetCode: e.target.value })}
+                />
+              </Form.Group>
+
+              <Form.Group className="mb-3">
+                <Form.Label>Upload Image</Form.Label>
+                <div className="d-flex align-items-center gap-3">
+                  <input
+                    type="file"
+                    name="nftImage"
+                    id="nftImage"
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                    className="d-none"
+                    required
+                  />
+                  <Button 
+                    variant="outline-primary" 
+                    onClick={() => document.getElementById('nftImage').click()}
+                  >
+                    Choose Image
+                  </Button>
+                  {selectedFile && (
+                    <span className="text-muted">
+                      {selectedFile.name}
+                    </span>
                   )}
-  
-                  {(selectedMethod === 'auction' || selectedMethod === 'bids') && (
-                    <>
-                      {selectedMethod === 'bids' && (
-                        <Form.Group controlId="formPrice" className="mb-3">
-                          <Form.Control
-                            type="text"
-                            placeholder="Enter price in ETH"
-                            value={price}
-                            onChange={(e) => setPrice(e.target.value)}
-                            className={`form-control ${!isPriceValid ? 'is-invalid' : ''}`}
-                          />
-                          <div className="invalid-feedback">
-                            Please enter a valid price.
-                          </div>
-                        </Form.Group>
-                      )}
-                      <Form.Group controlId="formMinBid" className="mb-3">
-                        <Form.Control
-                          type="text"
-                          placeholder="Enter minimum bid in ETH"
-                          value={minBid}
-                          onChange={(e) => setMinBid(e.target.value)}
-                          className={`form-control ${!isMinBidValid ? 'is-invalid' : ''}`}
-                        />
-                        <div className="invalid-feedback">
-                          Please enter a valid minimum bid.
-                        </div>
-                      </Form.Group>
-                      <Row>
-                        <Col md={6}>
-                          <Form.Group controlId="formStartDate" className="mb-3">
-                            <Form.Label>Start Date</Form.Label>
-                            <Form.Control
-                              type="datetime-local"
-                              value={startDate}
-                              onChange={(e) => setStartDate(e.target.value)}
-                              className={`form-control ${!isStartDateValid ? 'is-invalid' : ''}`}
-                            />
-                            <div className="invalid-feedback">
-                              Please enter a valid start date.
-                            </div>
-                          </Form.Group>
-                        </Col>
-                        <Col md={6}>
-                          <Form.Group controlId="formEndDate" className="mb-3">
-                            <Form.Label>End Date</Form.Label>
-                            <Form.Control
-                              type="datetime-local"
-                              value={endDate}
-                              onChange={(e) => setEndDate(e.target.value)}
-                              className={`form-control ${!isEndDateValid ? 'is-invalid' : ''}`}
-                            />
-                            <div className="invalid-feedback">
-                              Please enter a valid end date.
-                            </div>
-                          </Form.Group>
-                        </Col>
-                      </Row>
-                    </>
-                  )}
-  
-                  <Form.Group controlId="formName" className="mb-3">
-                    <Form.Control
-                      type="text"
-                      placeholder="Enter name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className={`form-control ${!isNameValid ? 'is-invalid' : ''}`}
-                    />
-                    <div className="invalid-feedback">
-                      Please enter a name.
-                    </div>
-                  </Form.Group>
-                  <Form.Group controlId="formDescription" className="mb-3">
-                    <Form.Control
-                      as="textarea"
-                      rows={3}
-                      placeholder="Enter description"
-                      value={desc}
-                      onChange={(e) => setDescription(e.target.value)}
-                      className="form-control"
-                    />
-                  </Form.Group>
-                  <div className="d-grid px-0">
-                    <Button className="gradient-button" type="submit" size="lg" disabled={isLoading || isSuccess}>
-                      {isLoading ? (
-                        <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" />
-                      ) : isSuccess ? (
-                        <span>&#10003; NFT Listed Successfully!</span>
-                      ) : (
-                        'Create & List NFT!'
-                      )}
-                    </Button>
-                  </div>
-                </Form>
-              </Row>
+                </div>
+                {!selectedFile && (
+                  <Form.Text className="text-muted">
+                    Please select an image file for your NFT
+                  </Form.Text>
+                )}
+              </Form.Group>
+
+              <Button
+                onClick={createNFT}
+                disabled={isLoading || !formInput.name || !formInput.description || !formInput.price || !formInput.assetCode || !selectedFile}
+              >
+                {isLoading ? 'Creating...' : 'Create NFT'}
+              </Button>
+            </Form>
+          </Col>
+
+          <Col md={5} className="create-nft-preview">
+            <div className="preview-container">
+              <h2>Preview</h2>
+              <div className="image-preview">
+                {previewUrl ? (
+                  <img 
+                    src={previewUrl} 
+                    alt="Preview" 
+                    className="preview-image"
+                    style={{ 
+                      maxWidth: '100%', 
+                      maxHeight: '300px', 
+                      objectFit: 'contain',
+                      border: '1px solid #dee2e6',
+                      borderRadius: '4px',
+                      padding: '4px'
+                    }}
+                  />
+                ) : (
+                  <p>No image uploaded</p>
+                )}
+              </div>
+              <div className="preview-details">
+                <h3>{formInput.name || 'NFT Name'}</h3>
+                <p>{formInput.description || 'NFT Description'}</p>
+                <p className="price">{formInput.price ? `${formInput.price} XLM` : '0 XLM'}</p>
+                {formInput.assetCode && <p className="asset-code">Asset Code: {formInput.assetCode}</p>}
+              </div>
             </div>
-          </main>
-        </div>
-      </div>
-      <div className={`fullscreen-confetti ${showConfetti ? 'show' : 'hide'}`}>
-        <Confetti active={showConfetti} config={confettiConfig} />
-      </div>
+          </Col>
+        </Row>
+      </Container>
     </div>
   );
 };
+
 export default Create;  
