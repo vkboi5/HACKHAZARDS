@@ -1,0 +1,257 @@
+/* Base Styles */
+html, body {
+  background-color: #f4f4f9;
+  font-family: 'Roboto', sans-serif;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* Container */
+.container-fluid {
+  padding-top: 50px; /* Adjust based on the actual navbar height */
+}
+
+/* Content */
+.content {
+  padding: 2rem;
+  max-width: 600px;
+  width: 100%;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.1);
+  margin: 0 auto; /* Center the content */
+  margin-right: 50px !important;
+  margin-top: -50px !important;
+}
+
+/* Form Control */
+form .form-control {
+  border: 2px solid #e5e5e5;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  color: #333;
+  
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+form .form-control::placeholder {
+  color: #aaa;
+}
+
+form .form-control:focus {
+  background: #ffffff;
+  border-color: #c4c4c4;
+  outline: none;
+}
+
+/* Custom file upload button */
+input[type="file"] {
+  display: none;
+}
+
+.custom-file-upload {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  background-color: #6200ea;
+  color: white;
+  border-radius: 8px;
+  transition: background-color 0.3s;
+}
+
+.custom-file-upload:hover {
+  background-color: #4b00b5;
+}
+
+.custom-file-upload:disabled {
+  background-color: #ddd;
+  color: #aaa;
+  cursor: not-allowed;
+}
+
+/* Adjusted input container */
+.upload-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 2px dashed #ccc;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  transition: border-color 0.3s;
+}
+
+.upload-container:hover {
+  border-color: #6200ea;
+}
+
+.upload-container span {
+  color: #333;
+  margin-left: 1rem;
+  font-weight: bold;
+}
+
+/* Method Selection */
+.method-selection {
+  margin-bottom: 1rem;
+}
+
+.method-selection label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.method-options {
+  display: flex;
+  flex-wrap: wrap; /* Ensure options wrap on smaller screens */
+  gap: 1rem;
+}
+
+.method-option {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  border: 2px solid #ccc;
+  border-radius: 10px;
+  cursor: pointer;
+  flex-grow: 1;
+  margin-bottom: 1rem; /* Add space between options */
+  transition: background-color 0.3s, border-color 0.3s;
+}
+
+.method-option:last-child {
+  margin-right: 0;
+}
+
+.method-option span {
+  margin-left: 0.5rem;
+}
+
+.method-option.selected {
+  background-color: #6200ea;
+  border-color: #4b00b5;
+  color: white;
+}
+
+.method-option.selected svg {
+  fill: white;
+}
+
+.image-container img{
+  width: 620px;
+  height: 650px;
+  margin-top: -70px;
+  margin-left: 7rem;
+  animation: slideIn 1s ease-out, floatAnimation 2s ease-in-out infinite;
+}
+
+/* Keyframes for Animation */
+@keyframes slideIn {
+  0% {
+    transform: translateX(-100%); /* Start off-screen to the left */
+  }
+  100% {
+    transform: translateX(0); /* End at original position */
+  }
+}
+
+/* Keyframes for Floating Animation */
+@keyframes floatAnimation {
+  0%, 100% {
+    transform: translateY(0); /* Start and end position */
+  }
+  50% {
+    transform: translateY(-10px); /* Middle position */
+  }
+}
+/* Button Styles */
+.gradient-button {
+  background: linear-gradient(90deg, #6200ea 0%, #4b00b5 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 1rem;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: background 0.3s;
+  background-size: 200% 200%;
+}
+
+.gradient-button:hover {
+  animation: gradient-flow 3s ease infinite;
+}
+
+.gradient-button:disabled {
+  background: #ddd;
+  color: #aaa;
+  cursor: not-allowed;
+}
+
+/* Keyframes for Gradient Animation */
+@keyframes gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .content {
+    padding: 1rem;
+  }
+
+  .col-lg-3 {
+    display: none; /* Hide the image container on smaller screens */
+  }
+
+  .col-lg-9 {
+    flex: 1; /* Take full width on smaller screens */
+  }
+
+  .method-options {
+    flex-direction: column; /* Stack method options vertically on smaller screens */
+  }
+}
+
+@media (max-width: 576px) {
+  .content {
+    max-width: 100%;
+    margin: 0 auto;
+  }
+
+  .method-option {
+    margin-right: 0;
+  }
+
+  .upload-container {
+    padding: 0.5rem;
+  }
+}
+
+.fullscreen-confetti {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  pointer-events: none; /* Ensures confetti doesn't interfere with other interactions */
+  z-index: 9999; /* Ensures confetti is on top of other elements */
+}
+
+.show {
+  display: block;
+}
+
+.hide {
+  display: none;
+}

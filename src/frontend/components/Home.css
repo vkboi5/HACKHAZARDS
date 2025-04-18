@@ -1,0 +1,599 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap');
+
+.Fonteffect {
+  -webkit-text-stroke-width: 2px; /* Stroke width for the outline */
+  -webkit-text-stroke-color: #fff; /* Stroke color for the outline */
+  -webkit-text-fill-color: transparent; /* Fill color set to transparent */
+  padding: 4px; /* Padding around the text */
+  font-family:'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif; /* You can specify a custom font-family */
+  font-size: 48px; /* Adjust font size to match the desired appearance */
+  text-transform: uppercase; /* Optional: Convert text to uppercase */
+  font-weight: bold; /* Optional: Make the text bold */
+}
+
+
+.gradient-section {
+  background: linear-gradient(220deg, #A41C84 1%, #4637B8 70%);
+  color: #ffffff;
+  padding: 10px 0;
+}
+
+.white-section {
+  background: #ffffff;
+  color: #000000;
+  padding: 2rem 0;
+}
+
+.home-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 0 2rem;
+  overflow: hidden; /* Ensure content doesn't overflow */
+}
+
+.home-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  margin-top: -50px; /* Adjusted */
+}
+
+.home-text {
+  flex: 1;
+  padding-right: 2rem;
+  text-align: left;
+  margin: 0; /* Adjusted */
+  opacity: 0; /* Initial state for animation */
+  animation: slideInUp 1s forwards; /* Animation */
+  animation-delay: 0.5s; /* Delay for text */
+}
+
+.home-text h1, .home-text h2 {
+  font-family: 'Montserrat', sans-serif !important;
+  font-weight: 700;
+  color: #ffffff !important;
+  margin: 0; /* Adjusted */
+}
+
+.close-icon-home {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  cursor: pointer;
+  font-size: 1.5rem;
+  color: grey;
+  transition: color 0.3s ease-in-out; /* Smooth transition for color */
+}
+
+.close-icon-home:hover {
+  color: black;
+}
+
+.popup-content-home {
+  padding: 2rem;
+  background: rgba(255, 255, 255, 0.9); /* Semi-transparent background */
+  border-radius: 10px;
+  width: 300px;
+  text-align: center;
+  position: relative;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Added shadow for depth */
+  transition: all 0.3s ease-in-out; /* Smooth transition for hover effects */
+}
+
+.popup-content-home:hover {
+  transform: translateY(-5px); /* Slight lift on hover */
+}
+
+.popup-bid-input-home {
+  padding: 0.5rem;
+  margin: 1rem 0;
+  border-radius: 20px;
+  border: 1px solid #ccc;
+  width: calc(100% - 1rem); /* Full width input with padding consideration */
+  box-sizing: border-box;
+  transition: border-color 0.3s ease-in-out; /* Smooth transition for border color */
+}
+
+.popup-bid-input-home:focus {
+  border-color: #4B0082; /* Change border color on focus */
+  outline: none; /* Remove default focus outline */
+}
+
+.confirm-bid-button-home {
+  background-color: #007bff;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s ease-in-out; /* Smooth transition for background color */
+  box-shadow: 0 4px 6px rgba(0, 123, 255, 0.1); /* Added shadow for depth */
+}
+
+.confirm-bid-button-home:hover {
+  background-color: #0056b3; /* Darker blue on hover */
+}
+
+.confirm-bid-button-home:active {
+  background-color: #003f7f; /* Even darker blue on click */
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2); /* Reduce shadow on click */
+}
+
+.home-text h1 {
+  font-size: 3rem;
+  margin-bottom: 1rem; /* Vertical gap */
+}
+
+.home-text h2 {
+  font-size: 2.5rem;
+}
+
+.home-text p {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.2rem;
+  margin: 1rem 0 2rem 0; /* Adjusted vertical gap */
+  color: #ffffff !important;
+}
+
+.home-buttons {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem; /* Vertical gap */
+}
+
+.explore-button, .create-button {
+  background: transparent;
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  padding: 0.5rem 1rem;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 25px;
+  width: 8rem;
+  height: 3rem;
+  transition: all 0.3s ease-in-out;
+  cursor: pointer;
+}
+
+.explore-button:hover, .create-button:hover {
+  background: #ffffff;
+  color: #2e046d;
+}
+
+.home-image {
+  position: relative;
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0; /* Initial state for animation */
+  animation: slideInLeft 1s forwards, floatAnimation 3s infinite alternate; /* Animation */
+  background: url('./myimage.png');
+  background-size: 98%;
+}
+
+@keyframes floatAnimation {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px); /* Adjust the value for how high it floats */
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.home-image img {
+  position: relative; /* Ensure the image is on top */
+  max-width: 100%;
+  height: auto;
+}
+
+
+
+@keyframes slideInLeft {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInUp {
+  0% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.NftCardContainer {
+  padding: 2rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 2rem;
+}
+
+.nft-card {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+}
+
+.nft-card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+.nft-image-container {
+  height: 250px;
+  overflow: hidden;
+  border-top-left-radius: 15px;
+  border-top-right-radius: 15px;
+}
+
+.nft-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.nft-card-body {
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.nft-card-title {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.2rem;
+
+}
+
+.nft-card-text {
+  font-family: 'Montserrat', sans-serif;
+  
+  margin: 1rem 0;
+}
+
+.nft-card-footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 1rem;
+  gap: 1rem;
+}
+
+.nft-card-price {
+  color: #4B0082; /* Deep indigo color for a modern and bold look */
+  font-size: 1.28em; /* Larger font size for emphasis */
+  font-weight: bold; /* Bold text for better visibility */
+  text-align: center; /* Center the text */
+  padding: 5px; /* Padding around the text for spacing */
+  display: inline-block; /* Make the element inline for better spacing */
+  transition: background-color 0.3s, color 0.3s; /* Smooth transition for interactive elements */
+  font-family: 'Montserrat', sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 700px;
+  font-style: normal;
+}
+
+
+.no-assets-gif{
+  width: 200px;
+  height: auto;
+}
+
+.lastline{
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-size:xx-large !important;
+  font-weight:500;
+}
+
+.buy-button {
+  background-color: transparent;
+  color: #4B0082; /* Dark blue-violet color */
+  border: 2px solid #4B0082;
+  padding: 8px 20px;
+  margin: 10%;
+  border-radius: 20px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s, color 0.3s;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+}
+
+.place-bid-button {
+  background-color: transparent;
+  color: #4B0082; /* Dark blue-violet color */
+  border: 2px solid #4B0082;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s, color 0.3s;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+}
+
+
+.buy-button:hover {
+  background-color: #4B0082;
+  color: white;
+}
+
+.place-bid-button:hover {
+  background-color: #4B0082;
+  color: white;
+}
+
+@media screen and (max-width: 768px) {
+  .home-content {
+    flex-direction: column;
+    align-items: center !important;
+    text-align: center !important;
+    margin-top: 9rem !important;
+  }
+
+  .home-text {
+    padding-right: 0;
+  }
+
+  .home-image {
+    display: none;
+  }
+
+  .container {
+    padding: 1rem;
+  }
+
+  .nft-card {
+    max-width: 20rem;
+    padding: 1rem;
+  }
+
+  .nft-image-container {
+    height: 18rem;
+  }
+
+  .nft-card-title {
+    margin-top: 0.5rem;
+  }
+
+  .nft-card-text {
+    margin: 1rem 0;
+  }
+}
+
+@media screen and (max-width: 576px) {
+  .nft-card {
+    max-width: 100%;
+    padding: 1rem;
+  }
+
+  .nft-image-container {
+    height: 16rem;
+  }
+
+  .nft-card-title {
+    font-size: 1.4rem;
+    margin-top: 0.5rem;
+  }
+
+  .nft-card-text {
+    font-size: 1.2rem;
+    margin: 0.5rem 0;
+  }
+
+  .buy-button {
+    font-size: 1.4rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .home-container{
+    margin-top: -7rem ;
+  }
+
+  .gradient-section{
+    height:40rem;
+  }
+
+  .home-text{
+    align-items: center;
+  }
+
+  .home-buttons{
+    align-items: center;
+  }
+}
+
+.filters {
+  text-align: center;
+  margin: 2rem 0;
+}
+
+.filter-options {
+  display: flex;
+  justify-content: center;
+  gap: 1rem; /* Adjusted gap between filter buttons */
+}
+
+.filter-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.filter-button {
+  background-color: #f0f0f0;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.filter-button:hover {
+  background-color: #e0e0e0;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: #f9f9f9;
+  min-width: 160px;
+  box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.2);
+  z-index: 1;
+  border-radius: 10px;
+}
+
+.filter-dropdown:hover .dropdown-content {
+  display: block;
+}
+
+.dropdown-content button {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  text-align: left;
+  cursor: pointer;
+  border: none;
+  background-color: transparent;
+  transition: background-color 0.3s ease;
+}
+
+.dropdown-content button:hover {
+  background-color: #ddd;
+}
+
+
+.gradient-section{
+  height:42rem !important;
+}
+
+
+/* Home.css */
+
+.like-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  gap: 5px;
+}
+
+.heart-icon {
+  font-size: 16px;
+}
+
+/* Confetti CSS */
+.nft-card .nft-card-actions {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nft-card .nft-card-actions .confetti {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none; /* Ensures confetti doesn't interfere with button clicks */
+}
+
+.section-title-today{
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+@media screen and (max-width: 560px) and (max-height: 600px) {
+  .home-content {
+    flex-direction: row;
+    align-items: center ;
+    text-align: center ;
+    margin-top: 9rem ;
+  }
+
+  .home-text {
+    padding-right: 0;
+  }
+
+  .home-image {
+    display: none;
+  }
+
+  .container {
+    padding: 1rem;
+  }
+
+  .nft-card {
+    max-width: 45%; /* Reduce the width to ensure multiple cards fit side-by-side */
+    padding: 1rem;
+    margin: 0.5rem; /* Add margin between cards */
+  }
+
+  .nft-image-container {
+    height: 7rem; /* Adjust height for better fit */
+  }
+
+  .nft-card-title {
+    font-size: 1rem; /* Adjust font size */
+    margin-top: 0.5rem;
+  }
+
+  .nft-card-text {
+    font-size: 0.9rem; /* Adjust font size */
+    margin: 0.5rem 0;
+  }
+
+  .buy-button {
+    font-size: 0.9rem; /* Adjust font size */
+    padding: 0.3rem 0.5rem;
+  }
+
+  .place-bid-button {
+    font-size: 0.9rem; /* Adjust font size */
+    padding: 0.3rem 0.5rem;
+  }
+
+  .home-container {
+    margin-top: -7rem;
+  }
+
+  .gradient-section {
+    height: 40rem;
+  }
+
+  .home-text {
+    align-items: center;
+  }
+
+  .home-buttons {
+    align-items: center;
+  }
+}

@@ -1,0 +1,274 @@
+/* General container for listed items */
+.containerListedItems {
+  padding: 2rem;
+  margin: 0 auto; /* Center align the content */
+}
+
+/* Section title styles */
+.section-title-listed,
+.section-title-sold {
+  font-size: 2rem;
+  color: #333;
+  text-align: center;
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  margin-top: 1rem;
+  width: 100%;
+  margin: 2rem auto; /* Center align with auto margins */
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+}
+
+.section-title-listed {
+  background: rgba(238, 236, 236, 0.907); /* Light purple with transparency */
+  padding: 1.5rem;
+}
+
+.section-title-sold {
+  background: rgba(241, 237, 237, 0.907); /* Slightly lighter */
+  padding: 2rem;
+}
+
+/* Grid layout for cards */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 2rem;
+}
+
+/* Card styles */
+.card-custom {
+  margin-top: 10px;
+  background: #F4F4F9;
+  border-radius: 15px;
+  padding: 1rem;
+  box-shadow: -8px -8px 8px rgba(0, 0, 0, 0.1), 8px 8px 16px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: transform 0.3s;
+  position: relative; /* Position relative to place share button correctly */
+}
+
+.card-custom:hover {
+  transform: translateY(-5px);
+}
+
+.card-img {
+  width: 100%;
+  height: 300px;
+  object-fit: cover;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+
+.card-footer-custom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background-color: #F4F4F9;
+  border-top: 1px solid #e1e1e1;
+  border-radius: 0 0 10px 10px;
+}
+
+.card-footer-custom .card-text {
+  flex: 1;
+  text-align: left;
+  color: #333;
+  font-size: 1rem;
+}
+
+.card-footer-custom .buy-button {
+  flex-shrink: 0;
+  margin-left: 10px;
+}
+
+.card-footer-custom .buy-button button {
+  padding: 0.5rem 1rem;
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.card-footer-custom .buy-button button:hover {
+  background-color: #0056b3;
+}
+
+/* Sold card styling */
+.sold-card {
+  opacity: 0.6;
+}
+
+.sold-card:hover {
+  transform: none;
+}
+
+/* Share button styling */
+.share-button {
+  background-color: rgb(75, 0, 130); /* Violet shade */
+  color: #fff;
+  border: none;
+  border-radius: 30px; /* Rounded sides */
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  transition: background 0.3s;
+  opacity: 0;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  visibility: hidden;
+  font-family: 'Montserrat', sans-serif;
+  font-size: large; /* Modern font */
+}
+
+.card-custom:hover .share-button {
+  opacity: 1;
+  visibility: visible;
+}
+
+.share-button:hover {
+  background-color: rgba(75, 0, 130, 0.7); /* Slightly darker violet */
+}
+
+/* Share popup styling */
+.share-popup-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9999; /* Ensure popup is on top */
+}
+
+.share-popup {
+  background: rgba(255, 255, 255, 0.8); /* Semi-transparent background */
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  position: relative;
+}
+
+.share-popup h3 {
+  margin-bottom: 3rem;
+  color: #333;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+.share-popup .close-icon {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 1.5rem;
+  cursor: pointer;
+  z-index: 10000; /* Ensure close icon is on top */
+}
+
+.share-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 1rem;
+  text-align: center;
+}
+
+.share-options button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #333;
+  transition: color 0.3s;
+}
+
+.share-options span {
+  display: block;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+/* Social media icons original colors */
+.share-options button .fa-whatsapp { color: #25D366 !important; }
+.share-options button .fa-twitter { color: #1DA1F2 !important; }
+.share-options button .fa-facebook { color: #1877F2 !important; }
+.share-options button .fa-linkedin { color: #0077B5 !important; }
+.share-options button .fa-pinterest { color: #E60023 !important; }
+
+/* Additional styling */
+.blur-background {
+  filter: blur(5px);
+}
+
+/* Disable scrolling when popup is open */
+.no-scroll {
+  overflow: hidden;
+}
+
+/* Delete confirmation popup styling */
+.delete-confirmation-popup {
+  background: rgba(255, 255, 255, 0.9); /* Semi-transparent background */
+  padding: 2rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+}
+
+.delete-confirmation-popup h3 {
+  margin-bottom: 1rem;
+  color: #333;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.5rem;
+}
+
+.delete-confirmation-popup p {
+  margin-bottom: 2rem;
+  color: #666;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1rem;
+}
+
+.popup-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.popup-buttons .confirm-button,
+.popup-buttons .cancel-button {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.3s;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1rem;
+}
+
+.popup-buttons .confirm-button {
+  background-color: #e74c3c; /* Red */
+  color: #fff;
+}
+
+.popup-buttons .confirm-button:hover {
+  background-color: #c0392b; /* Darker red */
+}
+
+.popup-buttons .cancel-button {
+  background-color: #bdc3c7; /* Grey */
+  color: #fff;
+}
+
+.popup-buttons .cancel-button:hover {
+  background-color: #95a5a6; /* Darker grey */
+}
