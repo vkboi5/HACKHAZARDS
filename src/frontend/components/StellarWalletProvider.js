@@ -283,30 +283,136 @@ export function StellarWalletProvider({ children }) {
   // Sign transaction using Freighter
   const signTransactionWithFreighter = async (xdr) => {
     try {
+      // Check if Freighter is installed
       const isInstalled = await isFreighterInstalled();
       if (!isInstalled) {
-        throw new Error('Freighter is not installed');
+        throw new Error('Freighter is not installed. Please install the Freighter browser extension first.');
       }
       
       console.log('Requesting transaction signing from Freighter...');
       
       // Get network information to pass to the signTransaction function
-      const networkDetails = await freighterApi.getNetworkDetails();
+      let networkDetails;
+      try {
+        networkDetails = await freighterApi.getNetworkDetails();
+        console.log('Network details from Freighter:', networkDetails);
+        
+        if (!networkDetails || !networkDetails.networkPassphrase) {
+          console.warn('Incomplete network details from Freighter:', networkDetails);
+          // Try to use default testnet values if not provided
+          networkDetails = networkDetails || {};
+          networkDetails.network = networkDetails.network || 'TESTNET';
+          networkDetails.networkPassphrase = networkDetails.networkPassphrase || 'Test SDF Network ; September 2015';
+        }
+      } catch (networkError) {
+        console.error('Error getting network details from Freighter:', networkError);
+        // Fallback to defaults
+        networkDetails = {
+          network: 'TESTNET',
+          networkPassphrase: 'Test SDF Network ; September 2015'
+        };
+      }
       
-      const signResult = await freighterApi.signTransaction(xdr, {
-        network: networkDetails.network,
-        networkPassphrase: networkDetails.networkPassphrase
-      });
+      // Request signature from Freighter
+      let signResult;
+      try {
+        signResult = await freighterApi.signTransaction(xdr, {
+          network: networkDetails.network,
+          networkPassphrase: networkDetails.networkPassphrase
+        });
+        
+        console.log('Raw sign result from Freighter:', signResult);
+      } catch (signError) {
+        // Handle exceptions from the Freighter API
+        if (signError.message && signError.message.toLowerCase().includes('cancel')) {
+          throw new Error('Transaction signing was cancelled by the user');
+        } else {
+          throw new Error(`Error during Freighter signing request: ${signError.message || 'Unknown error'}`);
+        }
+      }
       
+      // Handle case when signResult is null or undefined
+      if (!signResult) {
+        throw new Error('No response received from Freighter wallet. The request may have been cancelled or timed out.');
+      }
+      
+      // Check for explicit error in the result
       if (signResult.error) {
-        throw new Error(signResult.error);
+        const errorMsg = signResult.error;
+        // Check for user rejection in the error message
+        if (errorMsg.toLowerCase().includes('reject') || 
+            errorMsg.toLowerCase().includes('cancel') || 
+            errorMsg.toLowerCase().includes('denied')) {
+          throw new Error('Transaction signing was rejected by the user');
+        }
+        throw new Error(`Freighter error: ${errorMsg}`);
+      }
+      
+      // Try to extract the signed XDR from various possible property names
+      // Freighter API returns signed XDR in different property names depending on version
+      const signedXDR = signResult.signedXDR || 
+                        signResult.signedTxXDR || 
+                        signResult.xdr || 
+                        (signResult.result && (signResult.result.signedXDR || signResult.result.xdr)) ||
+                        (typeof signResult === 'string' ? signResult : null);
+      
+      // Validate that we received a signed XDR
+      if (!signedXDR) {
+        console.error('No signed XDR found in Freighter response:', signResult);
+        
+        // Check if this looks like a user cancellation
+        if (signResult.status === 'rejected' || 
+            (signResult.message && signResult.message.toLowerCase().includes('cancel'))) {
+          throw new Error('Transaction signing was cancelled by the user');
+        }
+        
+        throw new Error('No signed XDR returned from Freighter. Please try again or check Freighter wallet status.');
+      }
+      
+      // Validate that the signed XDR is a valid string
+      if (typeof signedXDR !== 'string' || signedXDR.trim() === '') {
+        throw new Error(`Invalid signed XDR format received: ${typeof signedXDR}`);
+      }
+      
+      // Optional: Validate that the XDR can be parsed (catching basic format issues)
+      try {
+        const parsedTx = StellarSdk.xdr.TransactionEnvelope.fromXDR(signedXDR, 'base64');
+        // Verify the transaction has signatures
+        const signatures = parsedTx.v1().signatures();
+        if (signatures.length === 0) {
+          console.warn('Transaction was returned from Freighter but has no signatures');
+        } else {
+          console.log(`Transaction signed successfully with ${signatures.length} signature(s)`);
+        }
+      } catch (parseError) {
+        console.error('Error parsing signed XDR:', parseError);
+        throw new Error(`Invalid transaction format returned from Freighter: ${parseError.message}`);
       }
       
       console.log('Transaction signed successfully');
-      return signResult.signedXDR || signResult.signedTxXDR;
+      console.log('Signed XDR (first 30 chars):', signedXDR.substring(0, 30) + '...');
+      
+      return signedXDR;
     } catch (err) {
       console.error('Error signing transaction with Freighter:', err);
-      setError(`Failed to sign transaction: ${err.message}`);
+      
+      // Provide user-friendly errors based on error type
+      let userError = err.message;
+      
+      // For user cancellations, provide a clearer message
+      if (err.message.includes('cancel') || err.message.includes('reject')) {
+        userError = 'Transaction signing was cancelled. Please try again when you are ready to sign.';
+      } 
+      // For network or connectivity issues
+      else if (err.message.includes('Network Error') || err.message.includes('timed out')) {
+        userError = 'Network error while communicating with Freighter wallet. Please check your connection and try again.';
+      }
+      // For Freighter extension issues
+      else if (err.message.includes('not installed') || err.message.includes('not available')) {
+        userError = 'Freighter wallet extension is not properly installed or activated. Please check your browser extensions.';
+      }
+      
+      setError(`Failed to sign transaction: ${userError}`);
       throw err;
     }
   };
@@ -340,13 +446,38 @@ export function StellarWalletProvider({ children }) {
     
     // Convert the transaction object to XDR
     const xdr = transaction.toXDR();
+    console.log('Original transaction XDR (first 30 chars):', xdr.substring(0, 30) + '...');
     
-    if (walletMethod === 'freighter') {
-      return await signTransactionWithFreighter(xdr);
-    } else if (walletMethod === 'manual') {
-      throw new Error('Manual wallet mode does not support transaction signing. Please use Freighter for transactions.');
-    } else {
-      throw new Error('Unknown wallet method');
+    try {
+      let signedXdr;
+      
+      if (walletMethod === 'freighter') {
+        signedXdr = await signTransactionWithFreighter(xdr);
+      } else if (walletMethod === 'manual') {
+        throw new Error('Manual wallet mode does not support transaction signing. Please use Freighter for transactions.');
+      } else {
+        throw new Error('Unknown wallet method');
+      }
+      
+      // Ensure we're returning a string, not an object
+      if (typeof signedXdr === 'object' && signedXdr !== null) {
+        console.log('Received object instead of string, looking for XDR property', signedXdr);
+        signedXdr = signedXdr.xdr || signedXdr.signedXDR || signedXdr.signedTxXDR;
+        
+        if (!signedXdr) {
+          throw new Error('Could not find XDR in response object');
+        }
+      }
+      
+      if (typeof signedXdr !== 'string') {
+        throw new Error(`Expected string XDR but got ${typeof signedXdr}`);
+      }
+      
+      console.log('Final signTransaction result type:', typeof signedXdr);
+      return signedXdr;
+    } catch (error) {
+      console.error('Error in signTransaction:', error);
+      throw error;
     }
   };
   
