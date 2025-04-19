@@ -1,0 +1,80 @@
+/* Base styles and resets */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f8f9fa;
+  color: #333;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Fix Bootstrap modal backdrop */
+.modal-backdrop {
+  z-index: 1040 !important;
+}
+
+.modal-content {
+  z-index: 1050 !important;
+}
+
+/* Custom gradient styles */
+.bg-gradient-primary {
+  background: linear-gradient(90deg, #4637B8 0%, #A41C84 100%);
+}
+
+.text-gradient {
+  background: linear-gradient(90deg, #4637B8 0%, #A41C84 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Container adjustments */
+.container, 
+.container-fluid {
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+/* Page section spacing */
+.section {
+  padding: 4rem 0;
+}
+
+.section-sm {
+  padding: 2rem 0;
+}
+
+/* Remove bootstrap button focus outline */
+.btn:focus, .btn:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Fix Bootstrap dropdown menus */
+.dropdown-menu {
+  border: none;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+/* Fix navbar toggler */
+.navbar-toggler:focus {
+  box-shadow: none;
+}
+
+/* Fix card hover effects */
+.card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+} 

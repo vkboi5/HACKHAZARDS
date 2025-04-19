@@ -19,28 +19,20 @@ function App() {
     <StellarWalletProvider>
       <BrowserRouter>
         <div className="App">
-          <>
-            <Navigation />
-            <SecurityAlert />
-          </>
-          <div>
+          <Navigation />
+          <SecurityAlert />
+          <div className="content-container">
             <Routes>
-              <Route path="/" element={
-                <Home />
-              } />
-              <Route path="/create" element={
-                <Create />
-              } />
-              <Route path="/my-listed-items" element={
-                <MyListedItems />
-              } />
-              <Route path="/my-purchases" element={
-                <MyPurchases />
-              } />
+              <Route path="/" element={<Home />} />
+              <Route path="/create" element={<Create />} />
+              <Route path="/my-listed-items" element={<MyListedItems />} />
+              <Route path="/my-purchases" element={<MyPurchases />} />
               <Route path="/stellar-setup" element={
-                <div>
+                <div className="section">
                   <StellarWalletConnection />
-                  <StellarSetup />
+                  <div className="mt-4">
+                    <StellarSetup />
+                  </div>
                 </div>
               } />
             </Routes>

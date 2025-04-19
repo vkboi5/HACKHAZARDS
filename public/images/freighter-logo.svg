@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="freighter-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4637B8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#A41C84;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <circle cx="100" cy="100" r="90" fill="url(#freighter-gradient)" />
+  <path d="M100,50 L150,100 L100,150 L50,100 Z" fill="white" />
+  <circle cx="100" cy="100" r="25" fill="white" />
+  <path d="M85,85 L115,115 M85,115 L115,85" stroke="url(#freighter-gradient)" stroke-width="8" />
+</svg> 

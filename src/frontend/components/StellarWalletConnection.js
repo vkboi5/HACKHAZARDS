@@ -37,12 +37,13 @@ export function StellarWalletConnection() {
         ) : isConnected ? (
           <>
             <Alert variant="success">
-              Connected to Stellar wallet
-              <br />
-              Public Key: {publicKey}
+              <h4 className="mb-2">Connected to Stellar Network</h4>
+              <div className="public-key">
+                {publicKey}
+              </div>
               {accountBalance && (
-                <div className="mt-2">
-                  Balance: {accountBalance} XLM
+                <div className="mt-3">
+                  <strong>Balance:</strong> {parseFloat(accountBalance).toFixed(2)} XLM
                 </div>
               )}
             </Alert>
@@ -53,7 +54,8 @@ export function StellarWalletConnection() {
         ) : (
           <>
             <Alert variant="info">
-              Connect your Stellar wallet to start using the NFT marketplace
+              <h4 className="mb-2">Wallet Not Connected</h4>
+              <p>Connect your Stellar wallet to start using the NFT marketplace</p>
             </Alert>
             <Button variant="primary" onClick={connectWallet}>
               Connect Wallet

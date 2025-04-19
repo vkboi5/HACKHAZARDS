@@ -483,7 +483,7 @@ const Create = () => {
       setStatusMsg(`${finalErrorMsg} Please try again later.`);
       throw new Error(`${finalErrorMsg} Please try again later.`);
       
-    } catch (error) {
+      } catch (error) {
       const errorMsg = `Error in uploadMetadata: ${error.message}`;
       console.error(errorMsg, error);
       setStatusMsg('Failed to upload metadata. Please try again.');
@@ -705,7 +705,7 @@ const Create = () => {
         
         setStatusMsg('NFT created successfully!');
         // Success! NFT has been created
-        setTimeout(() => {
+      setTimeout(() => {
           navigate('/');
         }, 2000);
         return; // Exit early since we used an alternative approach
@@ -747,41 +747,41 @@ const Create = () => {
             <Form>
               <Form.Group className="mb-3">
                 <Form.Label>NFT Name</Form.Label>
-                <Form.Control
-                  type="text"
+                      <Form.Control
+                        type="text"
                   placeholder="NFT Name"
                   onChange={e => setFormInput({ ...formInput, name: e.target.value })}
                 />
-              </Form.Group>
+                    </Form.Group>
 
               <Form.Group className="mb-3">
                 <Form.Label>Description</Form.Label>
-                <Form.Control
+                          <Form.Control
                   as="textarea"
                   rows={3}
                   placeholder="NFT Description"
                   onChange={e => setFormInput({ ...formInput, description: e.target.value })}
                 />
-              </Form.Group>
+                        </Form.Group>
 
               <Form.Group className="mb-3">
                 <Form.Label>Price (XLM)</Form.Label>
-                <Form.Control
+                        <Form.Control
                   type="number"
                   placeholder="NFT Price in XLM"
                   onChange={e => setFormInput({ ...formInput, price: e.target.value })}
                 />
-              </Form.Group>
+                      </Form.Group>
               
               <Form.Group className="mb-3">
                 <Form.Label>Asset Code (max 12 characters)</Form.Label>
-                <Form.Control
+                            <Form.Control
                   type="text"
                   placeholder="Asset Code (e.g., MYNFT)"
                   maxLength={12}
                   onChange={e => setFormInput({ ...formInput, assetCode: e.target.value })}
                 />
-              </Form.Group>
+                          </Form.Group>
 
               <Form.Group className="mb-3">
                 <Form.Label>Upload Image</Form.Label>
@@ -806,13 +806,13 @@ const Create = () => {
                       {selectedFile.name}
                     </span>
                   )}
-                </div>
+                    </div>
                 {!selectedFile && (
                   <Form.Text className="text-muted">
                     Please select an image file for your NFT
                   </Form.Text>
                 )}
-              </Form.Group>
+                  </Form.Group>
 
               <Button
                 onClick={createNFT}
@@ -859,7 +859,7 @@ const Create = () => {
                 <p>{formInput.description || 'NFT Description'}</p>
                 <p className="price">{formInput.price ? `${formInput.price} XLM` : '0 XLM'}</p>
                 {formInput.assetCode && <p className="asset-code">Asset Code: {formInput.assetCode}</p>}
-              </div>
+                  </div>
             </div>
           </Col>
         </Row>
