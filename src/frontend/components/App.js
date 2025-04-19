@@ -6,6 +6,8 @@ import Create from './Create.js';
 import MyListedItems from './MyListedItems.js';
 import MyPurchases from './MyPurchases.js';
 import './App.css';
+// Security alert component
+import SecurityAlert from './SecurityAlert';
 
 // Stellar imports
 import { StellarWalletProvider } from './StellarWalletProvider';
@@ -19,6 +21,7 @@ function App() {
         <div className="App">
           <>
             <Navigation />
+            <SecurityAlert />
           </>
           <div>
             <Routes>

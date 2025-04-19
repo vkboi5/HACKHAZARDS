@@ -41,27 +41,62 @@ $yarn add --legacy-peer-deps or $npm install --legacy-peer-deps
 execute,  $yarn install --network-timeout 1000000
           
 ```
-### 4. Set up Environment Varibles 
-```
-Create a ev file .env , which will look like this:
+### 4. Set up Environment Variables 
 
-REACT_APP_PINATA_API_KEY = 432a7605d4c8w9euisjwfji
-REACT_APP_PINATA_SECRET_API_KEY = b5184aa54e3c9ec622acdfcd284woijiwgra1a2fd4930d276e581
-INFURA_PROJECT_ID = cd1f4810ijfeijiwef9weuwe
+⚠️ **SECURITY WARNING: Proper configuration of environment variables is critical for both functionality and security.**
 
+1. Copy the .env.example file to a new file named .env:
+   ```
+   $ cp .env.example .env
+   ```
 
-SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/cd1f4810hahuchush
+2. Update the .env file with your own API keys and credentials:
 
-PRIVATE_KEY=d6dfd18647049c7a116c12d64426a26b5af2ade667c921a8b151ddd694c6cc6f
+   - **Pinata IPFS Storage Configuration**:
+     1. Create an account at [Pinata Cloud](https://app.pinata.cloud)
+     2. Generate API keys at [Pinata Keys](https://app.pinata.cloud/keys)
+     3. Add to your .env file:
+        ```
+        REACT_APP_PINATA_API_KEY=your-pinata-api-key
+        REACT_APP_PINATA_API_SECRET=your-pinata-api-secret
+        ```
 
-PINATA_API_KEY=43wahef4c8b28d7dbd
+   - **Ethereum Configuration**:
+     1. Create an account at [Infura](https://infura.io) 
+     2. Create a new project and copy your API key
+     3. Add to your .env file:
+        ```
+        REACT_APP_INFURA_KEY=your-infura-project-id
+        SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/your-infura-project-id
+        ```
+     4. For Ethereum transaction signing:
+        ```
+        PRIVATE_KEY=your-ethereum-private-key
+        ```
+     5. For contract verification (optional):
+        ```
+        ETHERSCAN_API_KEY=your-etherscan-api-key
+        ```
 
-INFURA_KEY=cd1f481035af4328329b7589667d7e9
+   - **Stellar Configuration**:
+     1. Generate keys using [Stellar Laboratory](https://laboratory.stellar.org/#account-creator)
+     2. Add to your .env file:
+        ```
+        REACT_APP_STELLAR_ISSUER_PUBLIC_KEY=your-stellar-public-key
+        REACT_APP_STELLAR_ISSUER_SECRET_KEY=your-stellar-secret-key
+        ```
 
-ETHERSCAN_API_KEY=B87PYRH9ursejigN1EXN7EY
+3. **CRITICAL SECURITY PRACTICES**:
+   - `.env` is in `.gitignore` for a reason - NEVER commit it to version control
+   - Store backups of your `.env` file securely (password manager or encrypted storage)
+   - Rotate credentials regularly (every 30-90 days)
+   - Use different API keys for development and production
+   - If you accidentally expose your credentials, regenerate ALL of them immediately
 
-//These are example credentials you need to obtain your own particular keys from respective providers
-```
+4. After updating your `.env` file, restart your development server:
+   ```
+   $ npm run start
+   ```
 
 ### 5. Boot up local development blockchain
 ```
@@ -103,4 +138,30 @@ Hopefully your telegram mini app should start without any errors!
 Check out our telegram mini app: [Click here!](https://t.me/Galeries_Telegram_Mini_App_Bot) 
 //If you are accessing app through telegram please note that sometimes connecting to wallet and making transactions will be
 tough and time-consuming , so patience is a key here!
+
+## Environment Variables and Security
+
+This project uses environment variables for configuration. We've provided a `.env.example` file that shows the required variables.
+
+### Setting up Pinata for IPFS Storage
+
+1. Create an account on [Pinata](https://app.pinata.cloud)
+2. Generate API keys from the Pinata dashboard
+3. Add these keys to your `.env` file:
+   ```
+   REACT_APP_PINATA_API_KEY=your_pinata_api_key
+   REACT_APP_PINATA_API_SECRET=your_pinata_api_secret
+   ```
+
+### Troubleshooting Pinata Issues
+
+If you encounter issues with Pinata uploads:
+
+1. Verify your API keys are correct in the `.env` file
+2. Check that your Pinata account has sufficient storage space
+3. Ensure your network connection is stable
+4. Check the browser console for specific error messages
+5. Try regenerating your Pinata API keys if problems persist
+
+For Stellar blockchain integration, make sure your Stellar account has sufficient funds for transactions.
 

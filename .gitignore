@@ -24,9 +24,15 @@ yarn-error.log*
 
 node_modules
 .env
+.env.*
+!.env.example
+!.env.secure
 coverage
 coverage.json
 typechain
+*.key
+*secret*
+*private*
 
 #Hardhat files
 cache

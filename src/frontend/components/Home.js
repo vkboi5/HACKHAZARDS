@@ -93,63 +93,182 @@ const HomePage = () => {
 
     try {
       setLoading(true);
-      // Initialize the Stellar server directly
-      const stellarServer = new StellarSdk.Horizon.Server('https://horizon-testnet.stellar.org');
+      // Use server from context when available, otherwise initialize directly
+      // This ensures we use the same server instance that's already authenticated
+      const stellarServer = server || new StellarSdk.Horizon.Server(
+        process.env.REACT_APP_HORIZON_URL || 'https://horizon-testnet.stellar.org'
+      );
       
-      // Query all accounts that have NFT metadata
-      const accounts = await stellarServer.accounts()
-        .call();
-      
+      // Set up pagination and counters for query
       const nftItems = [];
+      let accountsPage = null;
+      let pageCounter = 1;
+      const maxPages = 5; // Limit pages to prevent excessive API calls
       
-      for (const account of accounts.records) {
-        const data = account.data_attr;
-        if (data) {
+      // Function to decode base64 data from Stellar
+      const decodeFromBase64 = (value) => {
+        try {
+          // In Stellar's API, data is stored as base64
+          return Buffer.from(value, 'base64').toString('utf-8');
+        } catch (e) {
+          console.warn('Failed to decode base64 value:', e);
+          return null;
+        }
+      };
+      
+      // Function to validate and process URLs
+      const processMetadataUrl = (url) => {
+        // Handle IPFS URLs
+        if (url.startsWith('ipfs:')) {
+          const ipfsHash = url.replace('ipfs:', '');
+          const gateway = process.env.REACT_APP_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/';
+          return `${gateway}${ipfsHash}`;
+        }
+        
+        // Handle direct IPFS hash
+        if (/^[a-zA-Z0-9]{46}$/.test(url)) {
+          const gateway = process.env.REACT_APP_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/';
+          return `${gateway}${url}`;
+        }
+        
+        // Return URL as is if it's already a valid URL
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+          return url;
+        }
+        
+        return null;
+      };
+
+      try {
+        // Start with a more targeted query - look for accounts with data entries
+        console.log('Querying Stellar accounts...');
+        accountsPage = await stellarServer.accounts()
+          .limit(50) // Limit results per page
+          .call();
+      } catch (queryError) {
+        console.error('Error in initial accounts query:', queryError);
+        
+        if (queryError.response && queryError.response.status === 400) {
+          // Try a more specific approach - if we have the user's public key, query it directly
+          if (publicKey) {
+            try {
+              console.log('Attempting to query user account directly');
+              const userAccount = await stellarServer.loadAccount(publicKey);
+              accountsPage = { records: [userAccount], next: null };
+            } catch (accountError) {
+              console.error('Failed to load user account:', accountError);
+              throw new Error('Could not find your Stellar account. Please ensure your wallet is connected properly.');
+            }
+          } else {
+            throw new Error('Bad request when querying accounts. The Stellar network may be experiencing issues.');
+          }
+        } else {
+          // Rethrow for general handling
+          throw queryError;
+        }
+      }
+      
+      // Process accounts with pagination
+      while (accountsPage && accountsPage.records.length > 0 && pageCounter <= maxPages) {
+        console.log(`Processing accounts page ${pageCounter}...`);
+        
+        for (const account of accountsPage.records) {
+          const data = account.data_attr;
+          if (!data) continue;
+          
           // Look for any keys that might contain NFT metadata
           const nftKeys = Object.keys(data).filter(key => 
             key.startsWith('nft_') && key.includes('_metadata')
           );
           
+          if (nftKeys.length === 0) continue;
+          
+          // Process each NFT metadata key
           for (const key of nftKeys) {
             try {
-              // Get the metadata URL or value
-              const metadataValue = data[key];
+              // Get the base64 encoded metadata value
+              const encodedValue = data[key];
+              if (!encodedValue) continue;
               
-              // If it's a URL, fetch the metadata
-              if (metadataValue.startsWith('http')) {
+              // Decode the base64 value
+              const decodedValue = decodeFromBase64(encodedValue);
+              if (!decodedValue) continue;
+              
+              // Check if the decoded value is a URL or an IPFS hash
+              const metadataUrl = processMetadataUrl(decodedValue);
+              
+              if (metadataUrl) {
+                // If it's a URL, fetch the metadata
                 try {
-                  const response = await axios.get(metadataValue);
+                  console.log(`Fetching metadata from: ${metadataUrl}`);
+                  const response = await axios.get(metadataUrl, { timeout: 10000 });
                   const metadata = response.data;
                   
-                  nftItems.push({
-                    id: account.id,
-                    name: metadata.name || 'Unnamed NFT',
-                    description: metadata.description || 'No description',
-                    image: metadata.image || '',
-                    creator: account.id,
-                    price: '0', // Price implementation will come in next phase
-                    likes: likes[account.id] || 0
-                  });
-                } catch (fetchError) {
-                  console.error('Error fetching metadata:', fetchError);
-                }
-              } else {
-                // If it's not a URL, try to decode it as base64 JSON
-                try {
-                  const decodedData = Buffer.from(metadataValue, 'base64').toString('utf-8');
-                  const metadata = JSON.parse(decodedData);
+                  if (!metadata || typeof metadata !== 'object') {
+                    console.warn('Invalid metadata format:', metadata);
+                    continue;
+                  }
+                  
+                  // Process image URL if it's IPFS
+                  let imageUrl = metadata.image || '';
+                  if (imageUrl && imageUrl.includes('ipfs:')) {
+                    imageUrl = processMetadataUrl(imageUrl);
+                  }
                   
                   nftItems.push({
-                    id: account.id,
+                    id: `${account.id}-${key}`, // Create a unique ID
+                    accountId: account.id,
                     name: metadata.name || 'Unnamed NFT',
                     description: metadata.description || 'No description',
-                    image: metadata.image || '',
-                    creator: account.id,
-                    price: '0',
+                    image: imageUrl,
+                    creator: metadata.creator || account.id,
+                    price: metadata.price || '0',
+                    assetCode: key.split('_')[1], // Extract asset code from the key
                     likes: likes[account.id] || 0
                   });
-                } catch (decodeError) {
-                  console.error('Error decoding metadata:', decodeError);
+                  
+                  // Load likes for this item from Pinata if needed
+                  if (!likes[account.id]) {
+                    const itemLikes = await loadLikesFromPinata(account.id);
+                    if (itemLikes > 0) {
+                      setLikes(prevLikes => ({
+                        ...prevLikes,
+                        [account.id]: itemLikes
+                      }));
+                    }
+                  }
+                } catch (fetchError) {
+                  console.error(`Error fetching metadata from ${metadataUrl}:`, fetchError);
+                }
+              } else {
+                // Try to parse the decoded value as direct JSON
+                try {
+                  const metadata = JSON.parse(decodedValue);
+                  
+                  if (!metadata || typeof metadata !== 'object') {
+                    console.warn('Invalid metadata format in JSON:', metadata);
+                    continue;
+                  }
+                  
+                  // Process image URL if needed
+                  let imageUrl = metadata.image || '';
+                  if (imageUrl && imageUrl.includes('ipfs:')) {
+                    imageUrl = processMetadataUrl(imageUrl);
+                  }
+                  
+                  nftItems.push({
+                    id: `${account.id}-${key}`,
+                    accountId: account.id,
+                    name: metadata.name || 'Unnamed NFT',
+                    description: metadata.description || 'No description',
+                    image: imageUrl,
+                    creator: metadata.creator || account.id,
+                    price: metadata.price || '0',
+                    assetCode: key.split('_')[1],
+                    likes: likes[account.id] || 0
+                  });
+                } catch (parseError) {
+                  console.warn(`Value is not a URL or valid JSON: ${decodedValue.substring(0, 100)}...`);
                 }
               }
             } catch (err) {
@@ -157,17 +276,37 @@ const HomePage = () => {
             }
           }
         }
+        
+        // Move to next page if available
+        if (accountsPage.next && pageCounter < maxPages) {
+          try {
+            console.log('Fetching next page of accounts...');
+            accountsPage = await accountsPage.next();
+            pageCounter++;
+          } catch (pageError) {
+            console.error('Error fetching next page:', pageError);
+            break;
+          }
+        } else {
+          break;
+        }
       }
-
+      
+      console.log(`Found ${nftItems.length} NFTs`);
+      
       // Apply filters and sorting
       let filteredItems = [...nftItems];
       
       if (selectedFilter && sortOrder) {
         filteredItems.sort((a, b) => {
           if (selectedFilter === 'price') {
-            return sortOrder === 'highToLow' ? b.price - a.price : a.price - b.price;
+            const priceA = parseFloat(a.price) || 0;
+            const priceB = parseFloat(b.price) || 0;
+            return sortOrder === 'highToLow' ? priceB - priceA : priceA - priceB;
           } else if (selectedFilter === 'popularity') {
-            return sortOrder === 'highToLow' ? b.likes - a.likes : a.likes - b.likes;
+            const likesA = a.likes || 0;
+            const likesB = b.likes || 0;
+            return sortOrder === 'highToLow' ? likesB - likesA : likesA - likesB;
           }
           return 0;
         });
@@ -178,7 +317,37 @@ const HomePage = () => {
     } catch (error) {
       console.error('Error loading NFTs:', error);
       setLoading(false);
-      toast.error('Failed to load NFTs', { position: 'top-center' });
+      
+      // Provide more helpful error messages based on the error type
+      let errorMessage = 'Failed to load NFTs';
+      
+      if (error.response) {
+        // Server responded with an error status
+        if (error.response.status === 400) {
+          errorMessage = 'The Stellar network returned a Bad Request error. Please check your connection and try again.';
+        } else if (error.response.status === 404) {
+          errorMessage = 'Account not found on the Stellar network.';
+        } else if (error.response.status === 429) {
+          errorMessage = 'Rate limit exceeded. Please try again later.';
+        } else if (error.response.status >= 500) {
+          errorMessage = 'The Stellar network is experiencing issues. Please try again later.';
+        }
+      } else if (error.request) {
+        // Request was made but no response
+        errorMessage = 'Network connection error. Please check your internet connection.';
+      } else if (error.message) {
+        // Something else went wrong
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage, { 
+        position: 'top-center',
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
     }
   };
 
