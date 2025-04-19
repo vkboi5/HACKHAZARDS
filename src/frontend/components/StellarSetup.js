@@ -185,20 +185,12 @@ export default function StellarSetup() {
       setLoading(true);
       setNftCreationStatus('Creating NFT...');
 
-      // Get the source keypair
-      const sourceSecretKey = localStorage.getItem('stellarSecretKey');
-      if (!sourceSecretKey) {
-        throw new Error('Secret key not found. Please reconnect your wallet.');
+      if (!publicKey) {
+        throw new Error('Wallet not connected. Please connect your wallet first.');
       }
       
-      const sourceKeypair = StellarSdk.Keypair.fromSecret(sourceSecretKey);
-      const sourcePublicKey = sourceKeypair.publicKey();
-      
-      console.log('Creating NFT with keypair:', {
-        publicKey: sourcePublicKey,
-        // Don't log the full secret key
-        secretKey: sourceSecretKey.substring(0, 5) + '...'
-      });
+      const sourcePublicKey = publicKey;
+      console.log('Using connected wallet address for NFT creation:', sourcePublicKey);
       
       // Check if account exists
       try {
@@ -266,18 +258,41 @@ export default function StellarSetup() {
         .setTimeout(30)
         .build();
 
-      // Sign the transaction
+      // Sign the transaction using wallet provider
       setNftCreationStatus('Signing transaction...');
-      transaction.sign(sourceKeypair);
-      
-      // Convert transaction to XDR for debugging
-      const xdr = transaction.toXDR();
-      console.log('Transaction XDR:', xdr);
+      const signedXdr = await signTransaction(transaction);
+      console.log('Transaction signed successfully');
       
       // Submit the transaction
       setNftCreationStatus('Submitting transaction...');
       try {
-        const txResult = await server.submitTransaction(transaction);
+        // Create a transaction object from the XDR with error handling
+        let submittableTransaction;
+        try {
+          // Using TransactionBuilder approach
+          submittableTransaction = StellarSdk.TransactionBuilder.fromXDR(
+            signedXdr,
+            StellarSdk.Networks.TESTNET
+          );
+          console.log('Parsed transaction using TransactionBuilder');
+        } catch (parseError) {
+          console.error('Failed to parse with TransactionBuilder:', parseError);
+          
+          try {
+            // Try alternative approach with Transaction constructor
+            const envelope = StellarSdk.xdr.TransactionEnvelope.fromXDR(signedXdr, 'base64');
+            submittableTransaction = new StellarSdk.Transaction(envelope, StellarSdk.Networks.TESTNET);
+            console.log('Parsed transaction using Transaction constructor');
+          } catch (parseError2) {
+            console.error('Failed to parse with Transaction constructor:', parseError2);
+            throw new Error('Could not parse the signed transaction. Please try again.');
+          }
+        }
+        
+        // Submit the transaction to the network
+        console.log('Submitting transaction to network');
+        const txResult = await server.submitTransaction(submittableTransaction);
+        
         console.log('Transaction successful:', txResult);
 
         setNftCreationStatus('NFT created successfully!');
