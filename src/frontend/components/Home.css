@@ -1,22 +1,33 @@
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap');
 
-.Fonteffect {
-  -webkit-text-stroke-width: 2px; /* Stroke width for the outline */
-  -webkit-text-stroke-color: #fff; /* Stroke color for the outline */
-  -webkit-text-fill-color: transparent; /* Fill color set to transparent */
-  padding: 4px; /* Padding around the text */
-  font-family:'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif; /* You can specify a custom font-family */
-  font-size: 48px; /* Adjust font size to match the desired appearance */
-  text-transform: uppercase; /* Optional: Convert text to uppercase */
-  font-weight: bold; /* Optional: Make the text bold */
+.heading-line1, .heading-line2, .heading-line3 {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 3.5rem;
+  color: #ffffff;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.heading-innovation {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 4rem;
+  color: transparent;
+  -webkit-text-stroke: 2px #fff;
+  margin: 0.5rem 0 1rem 0;
+  line-height: 1.1;
 }
 
 .gradient-section {
-  background: linear-gradient(220deg, #A41C84 1%, #4637B8 70%);
+  background: linear-gradient(120deg, #4637B8 0%, #A41C84 100%);
   color: #ffffff;
-  padding: 10px 0;
+  padding: 3rem 0;
   position: relative;
-  height: 42rem !important;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
 }
 
 .gradient-sphere {
@@ -50,6 +61,113 @@
   transform: translate(-50%, -50%);
 }
 
+.home-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+.home-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.home-text {
+  flex: 1;
+  text-align: left;
+  animation: fadeIn 1s ease-in;
+}
+
+.hero-illustration {
+  flex: 1;
+  height: 500px;
+  background-image: url('./bgfinal.png');
+  background-size: contain;
+  background-position: right center;
+  background-repeat: no-repeat;
+  animation: slideInRight 1s ease-out;
+}
+
+.home-text p {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.2rem;
+  margin: 1.5rem 0 2rem 0;
+  color: #ffffff;
+  max-width: 80%;
+}
+
+.home-buttons {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.explore-button, .create-button {
+  background: transparent;
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  padding: 0.8rem 2rem;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 30px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 120px;
+}
+
+.explore-button {
+  background-color: #4637B8;
+  border-color: #4637B8;
+}
+
+.create-button {
+  background-color: transparent;
+}
+
+.explore-button:hover, .create-button:hover {
+  background: #ffffff;
+  color: #4637B8;
+  transform: translateY(-3px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { 
+    transform: translateX(50px);
+    opacity: 0;
+  }
+  to { 
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.Fonteffect {
+  -webkit-text-stroke-width: 2px; /* Stroke width for the outline */
+  -webkit-text-stroke-color: #fff; /* Stroke color for the outline */
+  -webkit-text-fill-color: transparent; /* Fill color set to transparent */
+  padding: 4px; /* Padding around the text */
+  font-family:'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif; /* You can specify a custom font-family */
+  font-size: 48px; /* Adjust font size to match the desired appearance */
+  text-transform: uppercase; /* Optional: Convert text to uppercase */
+  font-weight: bold; /* Optional: Make the text bold */
+}
+
 .curved-line {
   position: absolute;
   width: 100%;
@@ -64,84 +182,6 @@
   background: #ffffff;
   color: #000000;
   padding: 2rem 0;
-}
-
-.home-container {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  min-height: 100vh;
-  padding: 0 2rem;
-  overflow: hidden;
-}
-
-.home-content {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
-  width: 100%;
-  margin-top: -50px; /* Adjusted */
-}
-
-.home-text {
-  flex: 1;
-  padding-right: 2rem;
-  text-align: left;
-  margin: 0; /* Adjusted */
-  opacity: 0; /* Initial state for animation */
-  animation: slideInUp 1s forwards; /* Animation */
-  animation-delay: 0.5s; /* Delay for text */
-}
-
-.home-text h1, .home-text h2 {
-  font-family: 'Montserrat', sans-serif !important;
-  font-weight: 700;
-  color: #ffffff !important;
-  margin: 0; /* Adjusted */
-}
-
-.home-text h1 {
-  font-size: 3rem;
-  margin-bottom: 1rem; /* Vertical gap */
-}
-
-.home-text h2 {
-  font-size: 2.5rem;
-}
-
-.home-text p {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 1.2rem;
-  margin: 1rem 0 2rem 0; /* Adjusted vertical gap */
-  color: #ffffff !important;
-}
-
-.home-buttons {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1rem; /* Vertical gap */
-}
-
-.explore-button, .create-button {
-  background: transparent;
-  border: 2px solid #ffffff;
-  color: #ffffff;
-  padding: 0.5rem 1rem;
-  font-family: 'Montserrat', sans-serif;
-  font-size: 1rem;
-  font-weight: 700;
-  border-radius: 25px;
-  width: 8rem;
-  height: 3rem;
-  transition: all 0.3s ease-in-out;
-  cursor: pointer;
-}
-
-.explore-button:hover, .create-button:hover {
-  background: #ffffff;
-  color: #2e046d;
 }
 
 .home-image {
@@ -185,93 +225,93 @@
   }
 }
 
-@keyframes slideInUp {
-  0% {
-    transform: translateY(100%);
-    opacity: 0;
-  }
-  100% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
 .NftCardContainer {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 2rem;
   padding: 2rem;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 2rem;
-}
-
-.nft-card {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 15px;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  transition: transform 0.3s ease;
+.NftCard {
+  background: white;
+  border-radius: 16px;
   overflow: hidden;
-}
-
-.nft-card:hover {
-  transform: translateY(-10px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-}
-
-.nft-image-container {
-  height: 250px;
-  overflow: hidden;
-  border-top-left-radius: 15px;
-  border-top-right-radius: 15px;
-  position: relative;
-}
-
-.nft-card-img {
-  width: 100%;
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.NftCard:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
+}
+
+.NftCardImage {
+  width: 100%;
+  height: 240px;
   object-fit: cover;
+  object-position: center;
 }
 
-.nft-card-body {
-  text-align: center;
-  padding: 1rem;
+.NftCardContent {
+  padding: 1.5rem;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
 }
 
-.nft-card-title {
+.NftCardTitle {
   font-family: 'Montserrat', sans-serif;
-  font-size: 1.2rem;
-  margin-bottom: 0.5rem;
-}
-
-.nft-card-description {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 0.9rem;
-  color: #666;
-  margin-bottom: 0.5rem;
-}
-
-.nft-card-creator {
-  font-family: 'Montserrat', sans-serif;
-  font-size: 0.8rem;
-  color: #888;
-  margin-bottom: 0.5rem;
-}
-
-.nft-card-price {
-  color: #4B0082;
-  font-size: 1.28em;
-  font-weight: bold;
-  text-align: center;
-  padding: 5px;
-  display: inline-block;
-  transition: background-color 0.3s, color 0.3s;
-  font-family: 'Montserrat', sans-serif;
-  font-optical-sizing: auto;
   font-weight: 700;
-  font-style: normal;
-  margin: 0.5rem 0;
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: #333;
+}
+
+.NftCardDescription {
+  color: #666;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin-bottom: 1rem;
+  flex-grow: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.NftCardPrice {
+  color: #4637B8;
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+
+.account-badge {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.account-badge .badge {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  font-weight: 500;
+  border-radius: 30px;
+}
+
+.badge.bg-info {
+  background: linear-gradient(to right, #4637B8, #A41C84) !important;
+  color: white;
+}
+
+.badge.bg-success {
+  background: linear-gradient(to right, #00b09b, #96c93d) !important;
+  color: white;
 }
 
 .no-assets {
@@ -479,47 +519,29 @@
     padding: 1rem;
   }
 
-  .nft-card {
-    max-width: 20rem;
+  .NftCardContainer {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1.5rem;
     padding: 1rem;
   }
-
-  .nft-image-container {
-    height: 18rem;
+  
+  .NftCardImage {
+    height: 180px;
   }
-
-  .nft-card-title {
-    margin-top: 0.5rem;
-  }
-
-  .nft-card-text {
-    margin: 1rem 0;
+  
+  .NftCardTitle {
+    font-size: 1.25rem;
   }
 }
 
 @media screen and (max-width: 576px) {
-  .nft-card {
+  .NftCardContainer {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+  
+  .NftCard {
     max-width: 100%;
-    padding: 1rem;
-  }
-
-  .nft-image-container {
-    height: 16rem;
-  }
-
-  .nft-card-title {
-    font-size: 1.4rem;
-    margin-top: 0.5rem;
-  }
-
-  .nft-card-text {
-    font-size: 1.2rem;
-    margin: 0.5rem 0;
-  }
-
-  .buy-button {
-    font-size: 1.4rem;
-    padding: 0.5rem 1rem;
   }
 
   .home-container {
@@ -559,22 +581,22 @@
     padding: 1rem;
   }
 
-  .nft-card {
+  .NftCard {
     max-width: 45%;
     padding: 1rem;
     margin: 0.5rem;
   }
 
-  .nft-image-container {
+  .NftCardImage {
     height: 7rem;
   }
 
-  .nft-card-title {
+  .NftCardTitle {
     font-size: 1rem;
     margin-top: 0.5rem;
   }
 
-  .nft-card-text {
+  .NftCardDescription {
     font-size: 0.9rem;
     margin: 0.5rem 0;
   }
@@ -604,4 +626,32 @@
   .home-buttons {
     align-items: center;
   }
+}
+
+.NftCard .btn-outline-danger {
+  border-color: #A41C84;
+  color: #A41C84;
+}
+
+.NftCard .btn-outline-danger:hover {
+  background-color: #A41C84;
+  border-color: #A41C84;
+  color: white;
+}
+
+.NftCard .btn-primary {
+  background: linear-gradient(90deg, #4637B8 0%, #A41C84 100%);
+  border: none;
+  transition: all 0.3s ease;
+}
+
+.NftCard .btn-primary:hover {
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-sm {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
 }

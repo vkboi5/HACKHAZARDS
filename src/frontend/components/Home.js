@@ -12,13 +12,14 @@ import loaderGif from './loader.gif';
 import './Home.css';
 import Popup from 'reactjs-popup';
 import backgroundImg from './bgfinal.png';
+import ItemDetailsModal from './ItemDetailsModal';
 
 const PINATA_BASE_URL = 'https://api.pinata.cloud';
 
-const HomePage = () => {
+const HomePage = ({ marketplace, isConnected, walletBalance }) => {
   const navigate = useNavigate();
   const nftCardSectionRef = useRef(null);
-  const { publicKey, isConnected, server } = useStellarWallet();
+  const { publicKey, isWalletConnected, balanceInXLM, stellarWallet } = useStellarWallet();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [selectedFilter, setSelectedFilter] = useState(null);
@@ -26,6 +27,11 @@ const HomePage = () => {
   const [likes, setLikes] = useState({});
   const [likedItems, setLikedItems] = useState({});
   const [confettiTrigger, setConfettiTrigger] = useState({});
+  const [loadingState, setLoadingState] = useState('not-loaded');
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [bidAmount, setBidAmount] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleCreateClick = () => {
     if (!isConnected) {
@@ -86,16 +92,10 @@ const HomePage = () => {
   };
 
   const loadNFTs = async () => {
-    if (!isConnected) {
-      setLoading(false);
-      return;
-    }
-
     try {
       setLoading(true);
       // Use server from context when available, otherwise initialize directly
-      // This ensures we use the same server instance that's already authenticated
-      const stellarServer = server || new StellarSdk.Horizon.Server(
+      const stellarServer = stellarWallet || new StellarSdk.Horizon.Server(
         process.env.REACT_APP_HORIZON_URL || 'https://horizon-testnet.stellar.org'
       );
       
@@ -119,73 +119,71 @@ const HomePage = () => {
       // Function to validate and process URLs
       const processMetadataUrl = (url) => {
         // Handle IPFS URLs
-        if (url.startsWith('ipfs:')) {
+        if (url && url.startsWith('ipfs:')) {
           const ipfsHash = url.replace('ipfs:', '');
           const gateway = process.env.REACT_APP_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/';
           return `${gateway}${ipfsHash}`;
         }
         
         // Handle direct IPFS hash
-        if (/^[a-zA-Z0-9]{46}$/.test(url)) {
+        if (url && /^[a-zA-Z0-9]{46,}$/.test(url)) {
           const gateway = process.env.REACT_APP_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/';
           return `${gateway}${url}`;
         }
         
         // Return URL as is if it's already a valid URL
-        if (url.startsWith('http://') || url.startsWith('https://')) {
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
           return url;
         }
         
-        return null;
+        return url || null;
       };
 
-      try {
-        // Start with a more targeted query - look for accounts with data entries
-        console.log('Querying Stellar accounts...');
-        accountsPage = await stellarServer.accounts()
-          .limit(50) // Limit results per page
-          .call();
-      } catch (queryError) {
-        console.error('Error in initial accounts query:', queryError);
-        
-        if (queryError.response && queryError.response.status === 400) {
-          // Try a more specific approach - if we have the user's public key, query it directly
-          if (publicKey) {
-            try {
-              console.log('Attempting to query user account directly');
-              const userAccount = await stellarServer.loadAccount(publicKey);
-              accountsPage = { records: [userAccount], next: null };
-            } catch (accountError) {
-              console.error('Failed to load user account:', accountError);
-              throw new Error('Could not find your Stellar account. Please ensure your wallet is connected properly.');
-            }
-          } else {
-            throw new Error('Bad request when querying accounts. The Stellar network may be experiencing issues.');
-          }
-        } else {
-          // Rethrow for general handling
-          throw queryError;
-        }
+      // List of accounts to check for NFTs
+      const accountsToCheck = [];
+      
+      // Add connected user's account if available
+      if (isConnected && publicKey) {
+        accountsToCheck.push(publicKey);
       }
       
-      // Process accounts with pagination
-      while (accountsPage && accountsPage.records.length > 0 && pageCounter <= maxPages) {
-        console.log(`Processing accounts page ${pageCounter}...`);
-        
-        for (const account of accountsPage.records) {
+      // Add specific account provided
+      const specificAccount = 'GAHDNV6A6NSOQM5AMU64NH2LOOAIK474NCGX2FXTXBKD5YUZLTZQKSPV';
+      if (!accountsToCheck.includes(specificAccount)) {
+        accountsToCheck.push(specificAccount);
+      }
+      
+      // Process each account
+      for (const accountId of accountsToCheck) {
+        try {
+          console.log('Querying account:', accountId);
+          const account = await stellarServer.loadAccount(accountId);
+          
           const data = account.data_attr;
           if (!data) continue;
           
-          // Look for any keys that might contain NFT metadata
+          // Find all NFT data entries (using our format: nft_{assetCode} and nft_{assetCode}_issued)
           const nftKeys = Object.keys(data).filter(key => 
-            key.startsWith('nft_') && key.includes('_metadata')
+            key.startsWith('nft_') && !key.endsWith('_issued')
           );
+          
+          console.log(`Found ${nftKeys.length} potential NFT keys for account ${accountId}`);
           
           if (nftKeys.length === 0) continue;
           
-          // Process each NFT metadata key
+          // Process each NFT key
           for (const key of nftKeys) {
             try {
+              // Only process NFTs that are actually issued
+              const assetCode = key.replace('nft_', '');
+              const issuedKey = `nft_${assetCode}_issued`;
+              
+              // Check if this NFT is actually issued
+              if (!data[issuedKey]) {
+                console.log(`NFT ${assetCode} exists but is not issued`);
+                continue;
+              }
+              
               // Get the base64 encoded metadata value
               const encodedValue = data[key];
               if (!encodedValue) continue;
@@ -194,105 +192,89 @@ const HomePage = () => {
               const decodedValue = decodeFromBase64(encodedValue);
               if (!decodedValue) continue;
               
-              // Check if the decoded value is a URL or an IPFS hash
+              console.log(`Processing NFT ${assetCode} with metadata:`, decodedValue.substring(0, 100));
+              
+              // Try to extract data from the decoded value
+              let nftData = {};
+              
+              // First check if it's a URL
               const metadataUrl = processMetadataUrl(decodedValue);
               
-              if (metadataUrl) {
+              if (metadataUrl && (metadataUrl.startsWith('http://') || metadataUrl.startsWith('https://'))) {
                 // If it's a URL, fetch the metadata
                 try {
                   console.log(`Fetching metadata from: ${metadataUrl}`);
                   const response = await axios.get(metadataUrl, { timeout: 10000 });
-                  const metadata = response.data;
-                  
-                  if (!metadata || typeof metadata !== 'object') {
-                    console.warn('Invalid metadata format:', metadata);
-                    continue;
-                  }
-                  
-                  // Process image URL if it's IPFS
-                  let imageUrl = metadata.image || '';
-                  if (imageUrl && imageUrl.includes('ipfs:')) {
-                    imageUrl = processMetadataUrl(imageUrl);
-                  }
-                  
-                  nftItems.push({
-                    id: `${account.id}-${key}`, // Create a unique ID
-                    accountId: account.id,
-                    name: metadata.name || 'Unnamed NFT',
-                    description: metadata.description || 'No description',
-                    image: imageUrl,
-                    creator: metadata.creator || account.id,
-                    price: metadata.price || '0',
-                    assetCode: key.split('_')[1], // Extract asset code from the key
-                    likes: likes[account.id] || 0
-                  });
-                  
-                  // Load likes for this item from Pinata if needed
-                  if (!likes[account.id]) {
-                    const itemLikes = await loadLikesFromPinata(account.id);
-                    if (itemLikes > 0) {
-                      setLikes(prevLikes => ({
-                        ...prevLikes,
-                        [account.id]: itemLikes
-                      }));
-                    }
-                  }
+                  nftData = response.data;
                 } catch (fetchError) {
                   console.error(`Error fetching metadata from ${metadataUrl}:`, fetchError);
+                  // Try to parse decodedValue as metadata string in format "Name: X, URL: Y"
+                  const namePart = decodedValue.match(/Name: ([^,]*)/);
+                  const urlPart = decodedValue.match(/URL: (.*)/);
+                  
+                  if (namePart && urlPart) {
+                    nftData = {
+                      name: namePart[1].trim(),
+                      image: processMetadataUrl(urlPart[1].trim())
+                    };
+                  }
                 }
               } else {
-                // Try to parse the decoded value as direct JSON
+                // Try to parse the decoded value directly
+                // First as JSON
                 try {
-                  const metadata = JSON.parse(decodedValue);
+                  nftData = JSON.parse(decodedValue);
+                } catch (parseError) {
+                  // Try to parse as our custom format "Name: X, URL: Y"
+                  const namePart = decodedValue.match(/Name: ([^,]*)/);
+                  const urlPart = decodedValue.match(/URL: (.*)/);
                   
-                  if (!metadata || typeof metadata !== 'object') {
-                    console.warn('Invalid metadata format in JSON:', metadata);
+                  if (namePart && urlPart) {
+                    nftData = {
+                      name: namePart[1].trim(),
+                      image: processMetadataUrl(urlPart[1].trim())
+                    };
+                  } else {
+                    console.warn(`Unable to parse metadata: ${decodedValue.substring(0, 100)}...`);
                     continue;
                   }
-                  
-                  // Process image URL if needed
-                  let imageUrl = metadata.image || '';
-                  if (imageUrl && imageUrl.includes('ipfs:')) {
-                    imageUrl = processMetadataUrl(imageUrl);
-                  }
-                  
-                  nftItems.push({
-                    id: `${account.id}-${key}`,
-                    accountId: account.id,
-                    name: metadata.name || 'Unnamed NFT',
-                    description: metadata.description || 'No description',
-                    image: imageUrl,
-                    creator: metadata.creator || account.id,
-                    price: metadata.price || '0',
-                    assetCode: key.split('_')[1],
-                    likes: likes[account.id] || 0
-                  });
-                } catch (parseError) {
-                  console.warn(`Value is not a URL or valid JSON: ${decodedValue.substring(0, 100)}...`);
                 }
+              }
+              
+              // If we successfully extracted data, create the NFT item
+              if (nftData) {
+                // Process image URL if needed
+                let imageUrl = nftData.image || '';
+                imageUrl = processMetadataUrl(imageUrl);
+                
+                console.log(`Adding NFT to display: ${assetCode}`, {
+                  name: nftData.name,
+                  image: imageUrl.substring(0, 50) + '...',
+                });
+                
+                nftItems.push({
+                  id: `${account.id}-${key}`,
+                  accountId: account.id,
+                  name: nftData.name || 'Unnamed NFT',
+                  description: nftData.description || 'No description',
+                  image: imageUrl,
+                  creator: nftData.creator || account.id,
+                  price: nftData.price || '0',
+                  assetCode: assetCode,
+                  likes: likes[account.id] || 0,
+                  itemId: `${account.id}-${assetCode}`
+                });
               }
             } catch (err) {
               console.error(`Error processing NFT key ${key}:`, err);
             }
           }
-        }
-        
-        // Move to next page if available
-        if (accountsPage.next && pageCounter < maxPages) {
-          try {
-            console.log('Fetching next page of accounts...');
-            accountsPage = await accountsPage.next();
-            pageCounter++;
-          } catch (pageError) {
-            console.error('Error fetching next page:', pageError);
-            break;
-          }
-        } else {
-          break;
+        } catch (accountError) {
+          console.error(`Failed to load account ${accountId}:`, accountError);
         }
       }
       
-      console.log(`Found ${nftItems.length} NFTs`);
+      console.log(`Found ${nftItems.length} NFTs in total`);
       
       // Apply filters and sorting
       let filteredItems = [...nftItems];
@@ -352,6 +334,8 @@ const HomePage = () => {
   };
 
   const handleLike = async (itemId) => {
+    if (!itemId) return;
+    
     const currentLikes = likes[itemId] || 0;
     const userHasLiked = likedItems[itemId] || false;
 
@@ -382,123 +366,180 @@ const HomePage = () => {
 
   useEffect(() => {
     loadNFTs();
-  }, [server, selectedFilter, sortOrder]);
+  }, [stellarWallet, selectedFilter, sortOrder]);
 
   const formatWalletAddress = (address) => {
     if (!address) return '';
     return `${address.slice(0, 5)}***${address.slice(-4)}`;
   };
 
+  const handleViewDetails = (item) => {
+    setSelectedItem(item);
+    setShowModal(true);
+  };
+
+  const handlePlaceBid = (amount) => {
+    if (!isConnected) {
+      toast.error('Please connect your Stellar wallet first!', { position: 'top-center' });
+      return;
+    }
+
+    if (!selectedItem) {
+      toast.error('No item selected for bidding', { position: 'top-center' });
+      return;
+    }
+
+    if (!amount || parseFloat(amount) <= 0) {
+      toast.error('Please enter a valid bid amount', { position: 'top-center' });
+      return;
+    }
+
+    // For demonstration purposes, just show a success toast
+    // In a real implementation, you would:
+    // 1. Create a Stellar transaction to place the bid
+    // 2. Sign the transaction with the user's Stellar wallet
+    // 3. Submit the transaction to the Stellar network
+    // 4. Update the UI with the new bid status
+
+    toast.success(`Bid of ${amount} XLM placed successfully on ${selectedItem.name}!`, {
+      position: 'top-center'
+    });
+
+    // Reset bid amount and close modal
+    setBidAmount('');
+    setShowModal(false);
+  };
+
   return (
     <div className="home-container">
-      {/* Hero Section */}
       <div className="gradient-section">
         <div className="gradient-sphere sphere1"></div>
         <div className="gradient-sphere sphere2"></div>
         <div className="gradient-sphere sphere3"></div>
-        <div className="curved-line"></div>
         
         <div className="home-content">
           <div className="home-text">
-            <h1 className="Fonteffect">Welcome to Galerie</h1>
-            <p>Discover, collect, and trade unique NFTs on the Stellar network</p>
+            <h1 className="heading-line1">Connecting Artists</h1>
+            <h1 className="heading-line2">and Collectors through</h1>
+            <h1 className="heading-innovation">NFT INNOVATION</h1>
+            <p>Discover, collect, and trade exclusive NFTs effortlessly!</p>
             <div className="home-buttons">
-              <button className="create-button" onClick={handleCreateClick}>
-                Create NFT
-              </button>
-              <button className="explore-button" onClick={handleExploreClick}>
+              <button className="explore-button" onClick={() => window.scrollTo({ top: document.querySelector('.white-section').offsetTop, behavior: 'smooth' })}>
                 Explore
               </button>
+              <button className="create-button" onClick={() => navigate('/create')}>
+                Create
+              </button>
             </div>
           </div>
+          <div className="hero-illustration"></div>
         </div>
+        <div className="curved-line"></div>
       </div>
 
-      {/* NFT Cards Section */}
-      <div ref={nftCardSectionRef} className="NftCardContainer">
-        <h2 className="section-title-today">Featured NFTs</h2>
-        <div className="filters">
-          <div className="filter-options">
-            <div className="filter-dropdown">
-              <select
-                value={selectedFilter || ''}
-                onChange={(e) => setSelectedFilter(e.target.value)}
-                className="filter-button"
-              >
-                <option value="">Filter By</option>
-                <option value="price">Price</option>
-                <option value="popularity">Popularity</option>
-              </select>
+      <div className="white-section">
+        <div className="container">
+          <h2 className="text-center my-4">Featured NFTs</h2>
+          <div className="row">
+            <div className="col-12">
+              <input
+                type="text"
+                className="form-control mb-4"
+                placeholder="Search for NFTs..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
-            {selectedFilter && (
-              <div className="filter-dropdown">
-                <select
-                  value={sortOrder || ''}
-                  onChange={(e) => setSortOrder(e.target.value)}
-                  className="filter-button"
-                >
-                  <option value="">Sort Order</option>
-                  <option value="highToLow">High to Low</option>
-                  <option value="lowToHigh">Low to High</option>
-                </select>
+          </div>
+          
+          {loading ? (
+            <div className="d-flex justify-content-center">
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
               </div>
-            )}
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="loading-container">
-            <img src={loaderGif} alt="Loading..." className="loader" />
-          </div>
-        ) : items.length > 0 ? (
-          <div className="grid">
-            {items.map((item, idx) => (
-              <div key={idx} className="nft-card">
-                <div className="nft-image-container">
-                  <button className="like-button" onClick={() => handleLike(item.id)}>
-                    <FaHeart className="heart-icon" style={{ color: likedItems[item.id] ? 'red' : 'white' }} />
-                    <span>{likes[item.id] || 0}</span>
-                  </button>
-                  <img src={item.image} alt={item.name} className="nft-card-img" />
-                </div>
-                <div className="nft-card-body">
-                  <h3 className="nft-card-title">{item.name}</h3>
-                  <p className="nft-card-description">{item.description}</p>
-                  <p className="nft-card-creator">Created By: {formatWalletAddress(item.creator)}</p>
-                  <div className="nft-card-actions">
-                    <Confetti active={confettiTrigger[item.id]} />
-                    <button className="buy-button">Buy Now</button>
-                    <button className="place-bid-button">Place Bid</button>
-                    <Popup
-                      trigger={<button className="share-button">Share</button>}
-                      position="center center"
-                      closeOnDocumentClick
-                      contentStyle={{ padding: '0', border: 'none', width: '300px', height: '200px' }}
-                      overlayStyle={{ background: 'rgba(0, 0, 0, 0.5)' }}
-                    >
-                      {close => (
-                        <div className="popup-content-home">
-                          <FaTimes className="close-icon-home" onClick={close} />
+            </div>
+          ) : (
+            <div className="NftCardContainer">
+              {items.length > 0 ? (
+                items
+                  .filter((item) =>
+                    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+                  )
+                  .map((item, idx) => (
+                    <div key={idx} className="NftCard">
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                        className="NftCardImage"
+                      />
+                      <div className="NftCardContent">
+                        <h3 className="NftCardTitle">{item.name}</h3>
+                        <p className="NftCardDescription">{item.description}</p>
+                        <div className="account-badge">
+                          {item.accountId === 'GAHDNV6A6NSOQM5AMU64NH2LOOAIK474NCGX2FXTXBKD5YUZLTZQKSPV' && 
+                            <span className="badge bg-info">
+                              <small>Featured Collection</small>
+                            </span>
+                          }
+                          {item.accountId === publicKey && 
+                            <span className="badge bg-success">
+                              <small>Your Collection</small>
+                            </span>
+                          }
+                          <span className="badge bg-light text-dark">
+                            <small>Owner: {formatWalletAddress(item.accountId)}</small>
+                          </span>
                         </div>
-                      )}
-                    </Popup>
-                  </div>
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <span className="NftCardPrice">
+                            {item.price || '0'} XLM
+                          </span>
+                          <div>
+                            <button
+                              className="btn btn-outline-danger btn-sm me-2"
+                              onClick={() => handleLike(item.itemId)}
+                            >
+                              <FaHeart style={{ color: likedItems[item.itemId] ? '#dc3545' : 'inherit' }} /> {likes[item.itemId] || 0}
+                            </button>
+                            <button
+                              className="btn btn-primary btn-sm"
+                              onClick={() => handleViewDetails(item)}
+                            >
+                              View
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+              ) : (
+                <div className="text-center my-5">
+                  <h4>No NFTs Found</h4>
+                  <p>Be the first to create an NFT marketplace listing!</p>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => navigate("/create")}
+                  >
+                    Create NFT
+                  </button>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="no-assets">
-            <img src={noAssetsGif} alt="No assets" className="no-assets-gif" />
-            <p className="lastline">No NFTs available yet</p>
-            <button className="create-button" onClick={handleCreateClick}>
-              Create Your First NFT
-            </button>
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      <ToastContainer />
+      {selectedItem && (
+        <ItemDetailsModal
+          show={showModal}
+          onHide={() => setShowModal(false)}
+          item={selectedItem}
+          onBid={handlePlaceBid}
+          bidAmount={bidAmount}
+          setBidAmount={setBidAmount}
+          isConnected={isConnected}
+        />
+      )}
     </div>
   );
 };
