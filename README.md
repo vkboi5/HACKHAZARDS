@@ -26,9 +26,8 @@ Our marketplace provides a user-friendly platform for artists to tokenize their 
 `StellarMinds`
 
 ### Team Members:  
-- John Smith (Frontend Developer)  
-- Sarah Johnson (Blockchain Developer)  
-- Michael Chen (UI/UX Designer)  
+- Sarang Kadukar (Frontend Developer)  
+- T.V.Vishalkirthik (Backend Developer)    
 
 ### Your Approach:  
 - We chose this problem to democratize NFT technology by leveraging Stellar's low-cost, fast, and energy-efficient blockchain.
