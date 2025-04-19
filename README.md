@@ -8,7 +8,7 @@
 
 ## 📌 Problem Statement
 
-**Problem Statement 12 – Implementing Stellar Technologies**
+**Problem Statement 6 – Implementing Stellar Technologies**
 
 ---
 
