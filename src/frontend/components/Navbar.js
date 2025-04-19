@@ -1,19 +1,22 @@
 import './Navbar.css';
 import { Link } from "react-router-dom";
 import { Navbar, Nav, Button, Container, Badge, Dropdown } from 'react-bootstrap';
-import { useStellarWallet } from './StellarWalletProvider';
+import { useWalletConnect } from './WalletConnectProvider';
 import logo from './logo.png';
 import { FaWallet, FaSignOutAlt, FaExternalLinkAlt } from 'react-icons/fa';
+import React, { useState } from 'react';
 
 const Navigation = () => {
-    const { 
-        publicKey, 
-        isConnected, 
-        connectWallet, 
-        disconnectWallet, 
+    const [showLinks, setShowLinks] = useState(false);
+    
+    const {
+        publicKey,
+        isConnected,
+        connectWallet,
+        disconnectWallet,
         balanceInXLM,
         walletMethod
-    } = useStellarWallet();
+    } = useWalletConnect();
 
     const formatBalance = (balance) => {
         // Format to 2 decimal places
@@ -48,8 +51,11 @@ const Navigation = () => {
                                 <Dropdown.Toggle variant="outline-light" id="wallet-dropdown" className="wallet-dropdown-toggle">
                                     <FaWallet className="me-2" />
                                     {publicKey.slice(0, 5) + '...' + publicKey.slice(-5)}
-                                    {walletMethod === 'freighter' && (
-                                        <Badge bg="info" className="ms-2">Freighter</Badge>
+                                    {walletMethod === 'walletconnect' && (
+                                        <Badge bg="info" className="ms-2">WalletConnect</Badge>
+                                    )}
+                                    {walletMethod === 'manual' && (
+                                        <Badge bg="secondary" className="ms-2">Manual</Badge>
                                     )}
                                 </Dropdown.Toggle>
 

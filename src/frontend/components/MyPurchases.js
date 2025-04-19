@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useStellarWallet } from './StellarWalletProvider';
+import { useWalletConnect } from './WalletConnectProvider';
 import StellarSdk from '@stellar/stellar-sdk';
 import axios from 'axios';
 import loaderGif from './loader.gif';
 import './MyPurchases.css';
 
 export default function MyPurchases() {
-  const { publicKey, isConnected, server } = useStellarWallet();
+  const { publicKey, isConnected, server } = useWalletConnect();
   const [loading, setLoading] = useState(true);
   const [purchases, setPurchases] = useState([]);
   
@@ -17,7 +17,12 @@ export default function MyPurchases() {
     }
 
     try {
-      const stellarServer = new StellarSdk.Server('https://horizon-testnet.stellar.org');
+      setLoading(true);
+      
+      // Create server if not provided
+      const stellarServer = server || new StellarSdk.Horizon.Server(
+        process.env.REACT_APP_HORIZON_URL || 'https://horizon-testnet.stellar.org'
+      );
       
       // Get the account's transactions
       const account = await stellarServer.loadAccount(publicKey);

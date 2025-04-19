@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, Row, Col, Form, Button, Alert, Spinner } from 'react-bootstrap';
 import * as StellarSdk from '@stellar/stellar-sdk';
-import { useStellarWallet } from './StellarWalletProvider';
+import { useWalletConnect } from './WalletConnectProvider';
 import * as freighterApi from '@stellar/freighter-api';
 import axios from 'axios';
 import './Create.css';
@@ -10,7 +10,7 @@ import { toast } from 'react-hot-toast';
 
 const Create = () => {
   const navigate = useNavigate();
-  const { publicKey, isConnected, signTransaction } = useStellarWallet();
+  const { publicKey, isConnected, signTransaction } = useWalletConnect();
   const [formInput, setFormInput] = useState({
     price: '',
     name: '',

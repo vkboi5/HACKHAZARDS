@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useStellarWallet } from './StellarWalletProvider';
+import { useWalletConnect } from './WalletConnectProvider';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import axios from 'axios';
 import Popup from 'reactjs-popup';
@@ -8,6 +8,7 @@ import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './MyListedItems.css';
 import loaderGif from './loader.gif';
+import { Container, Row, Col, Card, Button, Alert, Spinner } from 'react-bootstrap';
 
 // Function to render sold items
 function renderSoldItems(items) {
@@ -30,7 +31,7 @@ function renderSoldItems(items) {
 
 // Main component for listed items
 export default function MyListedItems() {
-  const { publicKey, isConnected, server } = useStellarWallet();
+  const { publicKey, isConnected, server } = useWalletConnect();
   const [loading, setLoading] = useState(true);
   const [listedItems, setListedItems] = useState([]);
   const [soldItems, setSoldItems] = useState([]);
@@ -44,8 +45,12 @@ export default function MyListedItems() {
     }
 
     try {
-      // Create a new server instance if needed
-      const stellarServer = server || new StellarSdk.Server('https://horizon-testnet.stellar.org');
+      setLoading(true);
+      
+      // Create server if not provided
+      const stellarServer = server || new StellarSdk.Horizon.Server(
+        process.env.REACT_APP_HORIZON_URL || 'https://horizon-testnet.stellar.org'
+      );
       
       // Get the account's transactions
       const account = await stellarServer.loadAccount(publicKey);

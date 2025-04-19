@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useStellarWallet } from './StellarWalletProvider';
+import { useWalletConnect } from './WalletConnectProvider';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import axios from 'axios';
 import { toast, ToastContainer } from 'react-toastify';
@@ -15,10 +15,10 @@ import ItemDetailsModal from './ItemDetailsModal';
 
 const PINATA_BASE_URL = 'https://api.pinata.cloud';
 
-const HomePage = ({ marketplace, isConnected, walletBalance }) => {
+const HomePage = ({ marketplace, walletBalance }) => {
   const navigate = useNavigate();
   const nftCardSectionRef = useRef(null);
-  const { publicKey, isWalletConnected, balanceInXLM, stellarWallet } = useStellarWallet();
+  const { publicKey, isConnected, balanceInXLM } = useWalletConnect();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [selectedFilter, setSelectedFilter] = useState(null);
@@ -32,6 +32,7 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
   const [bidAmount, setBidAmount] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [imageCache, setImageCache] = useState({});
+  const [error, setError] = useState(null);
 
   const handleCreateClick = () => {
     if (!isConnected) {
@@ -171,7 +172,7 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
         throw new Error('Pinata authentication failed. Please verify your API keys.');
       }
 
-      const stellarServer = stellarWallet || new StellarSdk.Horizon.Server(
+      const stellarServer = new StellarSdk.Horizon.Server(
         process.env.REACT_APP_HORIZON_URL || 'https://horizon-testnet.stellar.org'
       );
 
@@ -492,7 +493,7 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
 
   useEffect(() => {
     loadNFTs();
-  }, [stellarWallet, selectedFilter, sortOrder, publicKey]);
+  }, [publicKey]);
 
   useEffect(() => {
     const handleStorageChange = (event) => {
@@ -681,7 +682,6 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
           onBid={handlePlaceBid}
           bidAmount={bidAmount}
           setBidAmount={setBidAmount}
-          isConnected={isConnected}
         />
       )}
       <ToastContainer />

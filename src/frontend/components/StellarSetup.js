@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Button, Form, Alert, Tabs, Tab, Spinner } from 'react-bootstrap';
-import { useStellarWallet } from './StellarWalletProvider';
+import { useWalletConnect } from './WalletConnectProvider';
 import axios from 'axios';
 import './StellarWallet.css';
 import * as StellarSdk from '@stellar/stellar-sdk';
@@ -9,7 +9,7 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 const server = new StellarSdk.Horizon.Server('https://horizon-testnet.stellar.org');
 
 export default function StellarSetup() {
-  const { publicKey, isConnected, error, connectWallet, disconnectWallet, getAccountDetails, signTransaction } = useStellarWallet();
+  const { publicKey, isConnected, error, connectWallet, disconnectWallet, getAccountDetails, signTransaction } = useWalletConnect();
   const [activeTab, setActiveTab] = useState('setup');
   const [accountDetails, setAccountDetails] = useState(null);
   const [loading, setLoading] = useState(false);
