@@ -283,10 +283,20 @@ export function StellarWalletProvider({ children }) {
   // Sign transaction using Freighter
   const signTransactionWithFreighter = async (xdr) => {
     try {
+      console.log('Starting signTransactionWithFreighter with XDR:', xdr.substring(0, 30) + '...');
+      
       // Check if Freighter is installed
       const isInstalled = await isFreighterInstalled();
+      console.log('Freighter installed check:', isInstalled);
       if (!isInstalled) {
         throw new Error('Freighter is not installed. Please install the Freighter browser extension first.');
+      }
+      
+      // Check if Freighter is available and connected
+      const isAvailable = await isFreighterAvailable();
+      console.log('Freighter available check:', isAvailable);
+      if (!isAvailable) {
+        throw new Error('Freighter is not available or not connected. Please make sure Freighter is unlocked and connected.');
       }
       
       console.log('Requesting transaction signing from Freighter...');
@@ -299,10 +309,11 @@ export function StellarWalletProvider({ children }) {
         
         if (!networkDetails || !networkDetails.networkPassphrase) {
           console.warn('Incomplete network details from Freighter:', networkDetails);
-          // Try to use default testnet values if not provided
-          networkDetails = networkDetails || {};
-          networkDetails.network = networkDetails.network || 'TESTNET';
-          networkDetails.networkPassphrase = networkDetails.networkPassphrase || 'Test SDF Network ; September 2015';
+          // Use default testnet values if not provided
+          networkDetails = {
+            network: 'TESTNET',
+            networkPassphrase: 'Test SDF Network ; September 2015'
+          };
         }
       } catch (networkError) {
         console.error('Error getting network details from Freighter:', networkError);
@@ -313,19 +324,37 @@ export function StellarWalletProvider({ children }) {
         };
       }
       
-      // Request signature from Freighter
+      // Request signature from Freighter with timeout
       let signResult;
       try {
-        signResult = await freighterApi.signTransaction(xdr, {
-          network: networkDetails.network,
-          networkPassphrase: networkDetails.networkPassphrase
+        console.log('Preparing to sign transaction with network:', networkDetails.network);
+        
+        // Add a timeout promise to prevent hanging
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Freighter signing request timed out')), 30000);
         });
         
+        // Race between the signing request and timeout
+        signResult = await Promise.race([
+          freighterApi.signTransaction(xdr, {
+            network: networkDetails.network,
+            networkPassphrase: networkDetails.networkPassphrase
+          }),
+          timeoutPromise
+        ]);
+        
         console.log('Raw sign result from Freighter:', signResult);
+        console.log('Sign result type:', typeof signResult);
+        console.log('Sign result keys:', Object.keys(signResult || {}));
       } catch (signError) {
-        // Handle exceptions from the Freighter API
+        console.error('Error during Freighter signing:', signError);
+        console.error('Sign error stack:', signError.stack);
+        
+        // Handle specific error cases
         if (signError.message && signError.message.toLowerCase().includes('cancel')) {
           throw new Error('Transaction signing was cancelled by the user');
+        } else if (signError.message && signError.message.toLowerCase().includes('timeout')) {
+          throw new Error('Transaction signing request timed out. Please try again.');
         } else {
           throw new Error(`Error during Freighter signing request: ${signError.message || 'Unknown error'}`);
         }
@@ -333,13 +362,14 @@ export function StellarWalletProvider({ children }) {
       
       // Handle case when signResult is null or undefined
       if (!signResult) {
+        console.error('No sign result received from Freighter');
         throw new Error('No response received from Freighter wallet. The request may have been cancelled or timed out.');
       }
       
       // Check for explicit error in the result
       if (signResult.error) {
+        console.error('Freighter returned error:', signResult.error);
         const errorMsg = signResult.error;
-        // Check for user rejection in the error message
         if (errorMsg.toLowerCase().includes('reject') || 
             errorMsg.toLowerCase().includes('cancel') || 
             errorMsg.toLowerCase().includes('denied')) {
@@ -349,16 +379,19 @@ export function StellarWalletProvider({ children }) {
       }
       
       // Try to extract the signed XDR from various possible property names
-      // Freighter API returns signed XDR in different property names depending on version
-      const signedXDR = signResult.signedXDR || 
-                        signResult.signedTxXDR || 
+      const signedXDR = signResult.signedTxXdr || 
+                        signResult.signedXDR || 
                         signResult.xdr || 
                         (signResult.result && (signResult.result.signedXDR || signResult.result.xdr)) ||
                         (typeof signResult === 'string' ? signResult : null);
       
+      console.log('Extracted signed XDR:', signedXDR ? signedXDR.substring(0, 30) + '...' : 'null');
+      
       // Validate that we received a signed XDR
       if (!signedXDR) {
         console.error('No signed XDR found in Freighter response:', signResult);
+        console.error('Response type:', typeof signResult);
+        console.error('Response keys:', Object.keys(signResult));
         
         // Check if this looks like a user cancellation
         if (signResult.status === 'rejected' || 
@@ -366,26 +399,33 @@ export function StellarWalletProvider({ children }) {
           throw new Error('Transaction signing was cancelled by the user');
         }
         
+        // Try to get more information about the failure
+        if (signResult.message) {
+          throw new Error(`Freighter signing failed: ${signResult.message}`);
+        }
+        
         throw new Error('No signed XDR returned from Freighter. Please try again or check Freighter wallet status.');
       }
       
       // Validate that the signed XDR is a valid string
       if (typeof signedXDR !== 'string' || signedXDR.trim() === '') {
+        console.error('Invalid signed XDR format:', typeof signedXDR);
         throw new Error(`Invalid signed XDR format received: ${typeof signedXDR}`);
       }
       
-      // Optional: Validate that the XDR can be parsed (catching basic format issues)
+      // Validate that the XDR can be parsed
       try {
+        console.log('Attempting to parse signed XDR...');
         const parsedTx = StellarSdk.xdr.TransactionEnvelope.fromXDR(signedXDR, 'base64');
-        // Verify the transaction has signatures
         const signatures = parsedTx.v1().signatures();
         if (signatures.length === 0) {
           console.warn('Transaction was returned from Freighter but has no signatures');
-        } else {
-          console.log(`Transaction signed successfully with ${signatures.length} signature(s)`);
+          throw new Error('Transaction was returned but has no signatures');
         }
+        console.log(`Transaction signed successfully with ${signatures.length} signature(s)`);
       } catch (parseError) {
         console.error('Error parsing signed XDR:', parseError);
+        console.error('Parse error stack:', parseError.stack);
         throw new Error(`Invalid transaction format returned from Freighter: ${parseError.message}`);
       }
       
@@ -395,20 +435,16 @@ export function StellarWalletProvider({ children }) {
       return signedXDR;
     } catch (err) {
       console.error('Error signing transaction with Freighter:', err);
+      console.error('Error stack:', err.stack);
       
       // Provide user-friendly errors based on error type
       let userError = err.message;
       
-      // For user cancellations, provide a clearer message
       if (err.message.includes('cancel') || err.message.includes('reject')) {
         userError = 'Transaction signing was cancelled. Please try again when you are ready to sign.';
-      } 
-      // For network or connectivity issues
-      else if (err.message.includes('Network Error') || err.message.includes('timed out')) {
+      } else if (err.message.includes('Network Error') || err.message.includes('timed out')) {
         userError = 'Network error while communicating with Freighter wallet. Please check your connection and try again.';
-      }
-      // For Freighter extension issues
-      else if (err.message.includes('not installed') || err.message.includes('not available')) {
+      } else if (err.message.includes('not installed') || err.message.includes('not available')) {
         userError = 'Freighter wallet extension is not properly installed or activated. Please check your browser extensions.';
       }
       

@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStellarWallet } from './StellarWalletProvider';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import axios from 'axios';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { useNavigate } from 'react-router-dom';
-import noAssetsGif from './crying.gif';
 import { FaHeart, FaTimes } from 'react-icons/fa';
 import Confetti from 'react-dom-confetti';
 import loaderGif from './loader.gif';
@@ -32,6 +31,7 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
   const [showModal, setShowModal] = useState(false);
   const [bidAmount, setBidAmount] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [imageCache, setImageCache] = useState({});
 
   const handleCreateClick = () => {
     if (!isConnected) {
@@ -50,12 +50,22 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
 
   const loadLikesFromPinata = async (itemId) => {
     try {
-      const response = await axios.get(`${PINATA_BASE_URL}/data/pinList?status=pinned&metadata[keyvalues][itemId]={"value": "${itemId}", "op": "eq"}`, {
-        headers: {
-          pinata_api_key: process.env.REACT_APP_PINATA_API_KEY,
-          pinata_secret_api_key: process.env.REACT_APP_PINATA_SECRET_API_KEY
+      const pinataApiKey = process.env.REACT_APP_PINATA_API_KEY?.trim();
+      const pinataApiSecret = process.env.REACT_APP_PINATA_API_SECRET?.trim();
+      if (!pinataApiKey || !pinataApiSecret) {
+        console.warn('Pinata credentials missing for likes, returning 0');
+        return 0;
+      }
+
+      const response = await axios.get(
+        `${PINATA_BASE_URL}/data/pinList?status=pinned&metadata[keyvalues][itemId]={"value": "${itemId}", "op": "eq"}`,
+        {
+          headers: {
+            pinata_api_key: pinataApiKey,
+            pinata_secret_api_key: pinataApiSecret,
+          },
         }
-      });
+      );
 
       const pinataItems = response.data.rows;
       if (pinataItems.length > 0) {
@@ -70,215 +80,324 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
 
   const updateLikesOnPinata = async (itemId, likes) => {
     try {
+      const pinataApiKey = process.env.REACT_APP_PINATA_API_KEY?.trim();
+      const pinataApiSecret = process.env.REACT_APP_PINATA_API_SECRET?.trim();
+      if (!pinataApiKey || !pinataApiSecret) {
+        console.warn('Pinata credentials missing for updating likes');
+        return;
+      }
+
       const metadata = {
         name: `likes-${itemId}`,
         keyvalues: {
           itemId: itemId,
-          likes: likes.toString()
-        }
+          likes: likes.toString(),
+        },
       };
 
-      const response = await axios.post(`${PINATA_BASE_URL}/pinning/pinJSONToIPFS`, metadata, {
-        headers: {
-          pinata_api_key: process.env.REACT_APP_PINATA_API_KEY,
-          pinata_secret_api_key: process.env.REACT_APP_PINATA_SECRET_API_KEY
+      await axios.post(
+        `${PINATA_BASE_URL}/pinning/pinJSONToIPFS`,
+        metadata,
+        {
+          headers: {
+            pinata_api_key: pinataApiKey,
+            pinata_secret_api_key: pinataApiSecret,
+          },
         }
-      });
-
-      return response.data.IpfsHash;
+      );
     } catch (error) {
       console.error('Error updating likes on Pinata:', error);
     }
   };
 
+  const optimizeImageUrl = useCallback((url) => {
+    if (!url) return url;
+    // Add query parameters for image optimization
+    const optimizedUrl = new URL(url);
+    optimizedUrl.searchParams.set('width', '300'); // Adjust size as needed
+    optimizedUrl.searchParams.set('quality', '80'); // Adjust quality as needed
+    return optimizedUrl.toString();
+  }, []);
+
+  const preloadImage = useCallback((url) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = url;
+      img.onload = () => resolve(url);
+      img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
+    });
+  }, []);
+
   const loadNFTs = async () => {
     try {
       setLoading(true);
-      // Use server from context when available, otherwise initialize directly
+      setLoadingState('loading');
+
+      console.log('Environment variables:', {
+        PINATA_API_KEY: process.env.REACT_APP_PINATA_API_KEY?.slice(0, 5) || 'undefined',
+        PINATA_API_SECRET: process.env.REACT_APP_PINATA_API_SECRET?.slice(0, 5) || 'undefined',
+        IPFS_GATEWAY: process.env.REACT_APP_IPFS_GATEWAY,
+      });
+
+      const pinataApiKey = process.env.REACT_APP_PINATA_API_KEY?.trim();
+      const pinataApiSecret = process.env.REACT_APP_PINATA_API_SECRET?.trim();
+
+      if (!pinataApiKey || !pinataApiSecret) {
+        throw new Error('Pinata API credentials are missing in .env file.');
+      }
+      if (typeof pinataApiKey !== 'string' || typeof pinataApiSecret !== 'string') {
+        throw new Error('Pinata API credentials must be strings.');
+      }
+
+      console.log('Testing Pinata authentication...');
+      try {
+        const authResponse = await axios.get(
+          'https://api.pinata.cloud/data/testAuthentication',
+          {
+            headers: {
+              'pinata_api_key': pinataApiKey,
+              'pinata_secret_api_key': pinataApiSecret,
+            },
+            timeout: 10000,
+          }
+        );
+        console.log('Pinata authentication successful:', authResponse.data);
+      } catch (authError) {
+        console.error('Pinata authentication failed:', {
+          message: authError.message,
+          status: authError.response?.status,
+          data: authError.response?.data,
+        });
+        throw new Error('Pinata authentication failed. Please verify your API keys.');
+      }
+
       const stellarServer = stellarWallet || new StellarSdk.Horizon.Server(
         process.env.REACT_APP_HORIZON_URL || 'https://horizon-testnet.stellar.org'
       );
-      
-      // Set up pagination and counters for query
-      const nftItems = [];
-      let accountsPage = null;
-      let pageCounter = 1;
-      const maxPages = 5; // Limit pages to prevent excessive API calls
-      
-      // Function to decode base64 data from Stellar
-      const decodeFromBase64 = (value) => {
-        try {
-          // In Stellar's API, data is stored as base64
-          return Buffer.from(value, 'base64').toString('utf-8');
-        } catch (e) {
-          console.warn('Failed to decode base64 value:', e);
-          return null;
-        }
-      };
-      
-      // Function to validate and process URLs
-      const processMetadataUrl = (url) => {
-        // Handle IPFS URLs
-        if (url && url.startsWith('ipfs:')) {
-          const ipfsHash = url.replace('ipfs:', '');
-          const gateway = process.env.REACT_APP_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/';
-          return `${gateway}${ipfsHash}`;
-        }
-        
-        // Handle direct IPFS hash
-        if (url && /^[a-zA-Z0-9]{46,}$/.test(url)) {
-          const gateway = process.env.REACT_APP_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/';
-          return `${gateway}${url}`;
-        }
-        
-        // Return URL as is if it's already a valid URL
-        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-          return url;
-        }
-        
-        return url || null;
-      };
 
-      // List of accounts to check for NFTs
-      const accountsToCheck = [];
-      
-      // Add connected user's account if available
-      if (isConnected && publicKey) {
-        accountsToCheck.push(publicKey);
-      }
-      
-      // Add specific account provided
-      const specificAccount = 'GAHDNV6A6NSOQM5AMU64NH2LOOAIK474NCGX2FXTXBKD5YUZLTZQKSPV';
-      if (!accountsToCheck.includes(specificAccount)) {
-        accountsToCheck.push(specificAccount);
-      }
-      
-      // Process each account
-      for (const accountId of accountsToCheck) {
-        try {
-          console.log('Querying account:', accountId);
-          const account = await stellarServer.loadAccount(accountId);
-          
-          const data = account.data_attr;
-          if (!data) continue;
-          
-          // Find all NFT data entries (using our format: nft_{assetCode} and nft_{assetCode}_issued)
-          const nftKeys = Object.keys(data).filter(key => 
-            key.startsWith('nft_') && !key.endsWith('_issued')
-          );
-          
-          console.log(`Found ${nftKeys.length} potential NFT keys for account ${accountId}`);
-          
-          if (nftKeys.length === 0) continue;
-          
-          // Process each NFT key
-          for (const key of nftKeys) {
-            try {
-              // Only process NFTs that are actually issued
-              const assetCode = key.replace('nft_', '');
-              const issuedKey = `nft_${assetCode}_issued`;
-              
-              // Check if this NFT is actually issued
-              if (!data[issuedKey]) {
-                console.log(`NFT ${assetCode} exists but is not issued`);
-                continue;
+      const nftItems = [];
+      let page = 1;
+      const pageSize = 100;
+      let hasMore = true;
+      const maxRetries = 3;
+      const retryDelay = 2000;
+
+      while (hasMore) {
+        let retryCount = 0;
+        let lastError = null;
+
+        while (retryCount <= maxRetries) {
+          try {
+            console.log(`Fetching Pinata pins, page ${page}, attempt ${retryCount + 1}...`);
+            const response = await axios.get(
+              'https://api.pinata.cloud/data/pinList',
+              {
+                params: {
+                  status: 'pinned',
+                  'metadata[keyvalues][app]': JSON.stringify({ value: 'Galerie', op: 'eq' }),
+                  pageLimit: pageSize,
+                  pageOffset: (page - 1) * pageSize,
+                },
+                headers: {
+                  'pinata_api_key': pinataApiKey,
+                  'pinata_secret_api_key': pinataApiSecret,
+                },
+                timeout: 10000,
               }
-              
-              // Get the base64 encoded metadata value
-              const encodedValue = data[key];
-              if (!encodedValue) continue;
-              
-              // Decode the base64 value
-              const decodedValue = decodeFromBase64(encodedValue);
-              if (!decodedValue) continue;
-              
-              console.log(`Processing NFT ${assetCode} with metadata:`, decodedValue.substring(0, 100));
-              
-              // Try to extract data from the decoded value
-              let nftData = {};
-              
-              // First check if it's a URL
-              const metadataUrl = processMetadataUrl(decodedValue);
-              
-              if (metadataUrl && (metadataUrl.startsWith('http://') || metadataUrl.startsWith('https://'))) {
-                // If it's a URL, fetch the metadata
-                try {
-                  console.log(`Fetching metadata from: ${metadataUrl}`);
-                  const response = await axios.get(metadataUrl, { timeout: 10000 });
-                  nftData = response.data;
-                } catch (fetchError) {
-                  console.error(`Error fetching metadata from ${metadataUrl}:`, fetchError);
-                  // Try to parse decodedValue as metadata string in format "Name: X, URL: Y"
-                  const namePart = decodedValue.match(/Name: ([^,]*)/);
-                  const urlPart = decodedValue.match(/URL: (.*)/);
-                  
-                  if (namePart && urlPart) {
-                    nftData = {
-                      name: namePart[1].trim(),
-                      image: processMetadataUrl(urlPart[1].trim())
-                    };
-                  }
+            );
+
+            const pinataItems = response.data.rows;
+            console.log(`Found ${pinataItems.length} pinned items on page ${page}`);
+
+            for (const item of pinataItems) {
+              try {
+                const ipfsHash = item.ipfs_pin_hash;
+                const metadataUrl = `${process.env.REACT_APP_IPFS_GATEWAY}${ipfsHash}`;
+                console.log(`Fetching metadata for ${ipfsHash}...`);
+
+                const metadataResponse = await axios.get(metadataUrl, { timeout: 10000 });
+                const nftData = metadataResponse.data;
+                console.log(`Metadata for ${ipfsHash}:`, nftData);
+
+                if (!nftData.name || !nftData.image) {
+                  console.warn(`Skipping invalid metadata for ${ipfsHash}: missing name or image`);
+                  continue;
                 }
-              } else {
-                // Try to parse the decoded value directly
-                // First as JSON
-                try {
-                  nftData = JSON.parse(decodedValue);
-                } catch (parseError) {
-                  // Try to parse as our custom format "Name: X, URL: Y"
-                  const namePart = decodedValue.match(/Name: ([^,]*)/);
-                  const urlPart = decodedValue.match(/URL: (.*)/);
-                  
-                  if (namePart && urlPart) {
-                    nftData = {
-                      name: namePart[1].trim(),
-                      image: processMetadataUrl(urlPart[1].trim())
-                    };
-                  } else {
-                    console.warn(`Unable to parse metadata: ${decodedValue.substring(0, 100)}...`);
+
+                let imageUrl = nftData.image;
+                if (imageUrl && imageUrl.startsWith('ipfs:')) {
+                  imageUrl = imageUrl.replace('ipfs:', '');
+                  imageUrl = `${process.env.REACT_APP_IPFS_GATEWAY}${imageUrl}`;
+                } else if (imageUrl && !imageUrl.startsWith('http')) {
+                  imageUrl = `${process.env.REACT_APP_IPFS_GATEWAY}${imageUrl}`;
+                }
+
+                // Optimize and cache image URL
+                const optimizedImageUrl = optimizeImageUrl(imageUrl);
+                if (!imageCache[optimizedImageUrl]) {
+                  try {
+                    await preloadImage(optimizedImageUrl);
+                    setImageCache(prev => ({ ...prev, [optimizedImageUrl]: true }));
+                  } catch (error) {
+                    console.error(`Failed to preload image: ${optimizedImageUrl}`, error);
                     continue;
                   }
                 }
-              }
-              
-              // If we successfully extracted data, create the NFT item
-              if (nftData) {
-                // Process image URL if needed
-                let imageUrl = nftData.image || '';
-                imageUrl = processMetadataUrl(imageUrl);
-                
-                console.log(`Adding NFT to display: ${assetCode}`, {
-                  name: nftData.name,
-                  image: imageUrl.substring(0, 50) + '...',
-                });
-                
+
+                const itemId = `${nftData.creator || 'unknown'}-${nftData.assetCode || ipfsHash}`;
+                const itemLikes = await loadLikesFromPinata(itemId);
+
+                let accountId = nftData.creator;
+                let assetCode = nftData.assetCode || itemId.split('-')[1];
+                let isVerifiedOnStellar = false;
+
+                if (accountId && StellarSdk.StrKey.isValidEd25519PublicKey(accountId)) {
+                  try {
+                    const account = await stellarServer.loadAccount(accountId);
+                    const data = account.data_attr;
+                    if (data[`nft_${assetCode}`] && data[`nft_${assetCode}_issued`]) {
+                      isVerifiedOnStellar = true;
+                    }
+                  } catch (accountError) {
+                    console.warn(`Could not verify ${accountId} on Stellar: ${accountError.message}`);
+                  }
+                }
+
                 nftItems.push({
-                  id: `${account.id}-${key}`,
-                  accountId: account.id,
-                  name: nftData.name || 'Unnamed NFT',
+                  id: itemId,
+                  accountId: accountId || 'unknown',
+                  name: nftData.name,
                   description: nftData.description || 'No description',
-                  image: imageUrl,
-                  creator: nftData.creator || account.id,
+                  image: optimizedImageUrl,
+                  creator: accountId || 'unknown',
                   price: nftData.price || '0',
                   assetCode: assetCode,
-                  likes: likes[account.id] || 0,
-                  itemId: `${account.id}-${assetCode}`
+                  likes: itemLikes,
+                  itemId: itemId,
+                  storageType: nftData.storage_type || 'ipfs',
+                  isVerifiedOnStellar,
                 });
+              } catch (itemError) {
+                console.error(`Error processing Pinata item ${item.ipfs_pin_hash}:`, itemError);
               }
-            } catch (err) {
-              console.error(`Error processing NFT key ${key}:`, err);
             }
+
+            page++;
+            if (pinataItems.length < pageSize) {
+              hasMore = false;
+            }
+            break;
+          } catch (pinataError) {
+            lastError = pinataError;
+            console.error(`Pinata fetch error, page ${page}, attempt ${retryCount + 1}:`, {
+              message: pinataError.message,
+              status: pinataError.response?.status,
+              data: pinataError.response?.data,
+            });
+
+            if (retryCount >= maxRetries) {
+              break;
+            }
+
+            if (pinataError.response?.status === 429) {
+              console.log('Rate limit hit, waiting longer...');
+              await new Promise((resolve) => setTimeout(resolve, retryDelay * 2));
+            } else {
+              await new Promise((resolve) => setTimeout(resolve, retryDelay));
+            }
+            retryCount++;
           }
-        } catch (accountError) {
-          console.error(`Failed to load account ${accountId}:`, accountError);
+        }
+
+        if (lastError && retryCount > maxRetries) {
+          console.error('Failed to fetch Pinata pins after retries:', lastError);
+          toast.warn('Failed to fetch NFTs from Pinata. Falling back to Stellar accounts...', {
+            position: 'top-center',
+          });
+          break;
         }
       }
-      
-      console.log(`Found ${nftItems.length} NFTs in total`);
-      
-      // Apply filters and sorting
+
+      if (nftItems.length === 0) {
+        console.log('Falling back to Stellar account scanning...');
+        const accountsToCheck = [
+          publicKey,
+          'GAHDNV6A6NSOQM5AMU64NH2LOOAIK474NCGX2FXTXBKD5YUZLTZQKSPV',
+          'GBH7EWCV6AN42WOFRXTTKPZLRWBVPN3NOC4VIYVXPTNIUYUPLEJ6ODRW',
+        ].filter(Boolean);
+
+        for (const accountId of accountsToCheck) {
+          try {
+            const account = await stellarServer.loadAccount(accountId);
+            const data = account.data_attr;
+
+            for (const [key, value] of Object.entries(data)) {
+              if (key.startsWith('nft_') && !key.endsWith('_issued')) {
+                const assetCode = key.replace('nft_', '');
+                const issuedKey = `nft_${assetCode}_issued`;
+                if (data[issuedKey] && Buffer.from(data[issuedKey], 'base64').toString() === 'true') {
+                  let metadataUrl = Buffer.from(value, 'base64').toString();
+                  if (!metadataUrl.startsWith('http')) {
+                    metadataUrl = `${process.env.REACT_APP_IPFS_GATEWAY}${metadataUrl}`;
+                  }
+
+                  try {
+                    const metadataResponse = await axios.get(metadataUrl, { timeout: 10000 });
+                    const nftData = metadataResponse.data;
+
+                    if (!nftData.name || !nftData.image) {
+                      console.warn(`Skipping invalid metadata for ${assetCode}`);
+                      continue;
+                    }
+
+                    let imageUrl = nftData.image;
+                    if (imageUrl && !imageUrl.startsWith('http')) {
+                      imageUrl = `${process.env.REACT_APP_IPFS_GATEWAY}${imageUrl}`;
+                    }
+
+                    const optimizedImageUrl = optimizeImageUrl(imageUrl);
+                    if (!imageCache[optimizedImageUrl]) {
+                      try {
+                        await preloadImage(optimizedImageUrl);
+                        setImageCache(prev => ({ ...prev, [optimizedImageUrl]: true }));
+                      } catch (error) {
+                        console.error(`Failed to preload image: ${optimizedImageUrl}`, error);
+                        continue;
+                      }
+                    }
+
+                    const itemId = `${accountId}-${assetCode}`;
+                    const itemLikes = await loadLikesFromPinata(itemId);
+
+                    nftItems.push({
+                      id: itemId,
+                      accountId,
+                      name: nftData.name,
+                      description: nftData.description || 'No description',
+                      image: optimizedImageUrl,
+                      creator: accountId,
+                      price: nftData.price || '0',
+                      assetCode,
+                      likes: itemLikes,
+                      itemId,
+                      storageType: nftData.storage_type || 'ipfs',
+                      isVerifiedOnStellar: true,
+                    });
+                  } catch (metadataError) {
+                    console.error(`Error fetching metadata for ${assetCode}:`, metadataError);
+                  }
+                }
+              }
+            }
+          } catch (accountError) {
+            console.error(`Error loading account ${accountId}:`, accountError);
+          }
+        }
+      }
+
+      console.log(`Total NFTs found: ${nftItems.length}`);
+
       let filteredItems = [...nftItems];
-      
       if (selectedFilter && sortOrder) {
         filteredItems.sort((a, b) => {
           if (selectedFilter === 'price') {
@@ -295,58 +414,65 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
       }
 
       setItems(filteredItems);
+      setLoadingState('loaded');
       setLoading(false);
+
+      if (nftItems.length === 0) {
+        toast.info('No NFTs found. Be the first to create one!', { position: 'top-center' });
+      }
     } catch (error) {
-      console.error('Error loading NFTs:', error);
+      console.error('Error loading NFTs:', {
+        message: error.message,
+        stack: error.stack,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+
       setLoading(false);
-      
-      // Provide more helpful error messages based on the error type
+      setLoadingState('error');
+
       let errorMessage = 'Failed to load NFTs';
-      
-      if (error.response) {
-        // Server responded with an error status
-        if (error.response.status === 400) {
-          errorMessage = 'The Stellar network returned a Bad Request error. Please check your connection and try again.';
-        } else if (error.response.status === 404) {
-          errorMessage = 'Account not found on the Stellar network.';
+      if (error.message.includes('Pinata API credentials')) {
+        errorMessage = error.message;
+      } else if (error.response) {
+        if (error.response.status === 401) {
+          errorMessage = 'Pinata authentication failed (401). Please check your API keys.';
         } else if (error.response.status === 429) {
-          errorMessage = 'Rate limit exceeded. Please try again later.';
+          errorMessage = 'Pinata rate limit exceeded. Please try again later.';
         } else if (error.response.status >= 500) {
-          errorMessage = 'The Stellar network is experiencing issues. Please try again later.';
+          errorMessage = 'Pinata server error. Please try again later.';
         }
       } else if (error.request) {
-        // Request was made but no response
-        errorMessage = 'Network connection error. Please check your internet connection.';
-      } else if (error.message) {
-        // Something else went wrong
+        errorMessage = 'Network error connecting to Pinata. Please check your internet.';
+      } else {
         errorMessage = error.message;
       }
-      
-      toast.error(errorMessage, { 
+
+      toast.error(errorMessage, {
         position: 'top-center',
         autoClose: 5000,
         hideProgressBar: false,
         closeOnClick: true,
         pauseOnHover: true,
-        draggable: true
+        draggable: true,
       });
     }
   };
 
   const handleLike = async (itemId) => {
     if (!itemId) return;
-    
+
     const currentLikes = likes[itemId] || 0;
     const userHasLiked = likedItems[itemId] || false;
 
     const newLikes = userHasLiked ? currentLikes - 1 : currentLikes + 1;
     setLikes((prevLikes) => ({
       ...prevLikes,
-      [itemId]: newLikes
+      [itemId]: newLikes,
     }));
     setLikedItems((prevLikedItems) => ({
       ...prevLikedItems,
-      [itemId]: !userHasLiked
+      [itemId]: !userHasLiked,
     }));
 
     await updateLikesOnPinata(itemId, newLikes);
@@ -366,10 +492,21 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
 
   useEffect(() => {
     loadNFTs();
-  }, [stellarWallet, selectedFilter, sortOrder]);
+  }, [stellarWallet, selectedFilter, sortOrder, publicKey]);
+
+  useEffect(() => {
+    const handleStorageChange = (event) => {
+      if (event.key === 'nftCreated') {
+        console.log('New NFT created, refreshing list...');
+        loadNFTs();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   const formatWalletAddress = (address) => {
-    if (!address) return '';
+    if (!address || address === 'unknown') return 'Unknown';
     return `${address.slice(0, 5)}***${address.slice(-4)}`;
   };
 
@@ -394,20 +531,17 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
       return;
     }
 
-    // For demonstration purposes, just show a success toast
-    // In a real implementation, you would:
-    // 1. Create a Stellar transaction to place the bid
-    // 2. Sign the transaction with the user's Stellar wallet
-    // 3. Submit the transaction to the Stellar network
-    // 4. Update the UI with the new bid status
-
     toast.success(`Bid of ${amount} XLM placed successfully on ${selectedItem.name}!`, {
-      position: 'top-center'
+      position: 'top-center',
     });
 
-    // Reset bid amount and close modal
     setBidAmount('');
     setShowModal(false);
+  };
+
+  const handleImageError = (e) => {
+    e.target.src = loaderGif; // Fallback to loader if image fails
+    console.error(`Failed to load image: ${e.target.src}`);
   };
 
   return (
@@ -416,7 +550,7 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
         <div className="gradient-sphere sphere1"></div>
         <div className="gradient-sphere sphere2"></div>
         <div className="gradient-sphere sphere3"></div>
-        
+
         <div className="home-content">
           <div className="home-text">
             <h1 className="heading-line1">Connecting Artists</h1>
@@ -424,10 +558,13 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
             <h1 className="heading-innovation">NFT INNOVATION</h1>
             <p>Discover, collect, and trade exclusive NFTs effortlessly!</p>
             <div className="home-buttons">
-              <button className="explore-button" onClick={() => window.scrollTo({ top: document.querySelector('.white-section').offsetTop, behavior: 'smooth' })}>
+              <button
+                className="explore-button"
+                onClick={() => window.scrollTo({ top: document.querySelector('.white-section').offsetTop, behavior: 'smooth' })}
+              >
                 Explore
               </button>
-              <button className="create-button" onClick={() => navigate('/create')}>
+              <button className="create-button" onClick={handleCreateClick}>
                 Create
               </button>
             </div>
@@ -451,7 +588,7 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
               />
             </div>
           </div>
-          
+
           {loading ? (
             <div className="d-flex justify-content-center">
               <div className="spinner-border text-primary" role="status">
@@ -462,44 +599,54 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
             <div className="NftCardContainer">
               {items.length > 0 ? (
                 items
-                  .filter((item) =>
-                    item.name.toLowerCase().includes(searchQuery.toLowerCase())
-                  )
+                  .filter((item) => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
                   .map((item, idx) => (
                     <div key={idx} className="NftCard">
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="NftCardImage"
+                      <img 
+                        src={item.image} 
+                        alt={item.name} 
+                        className="NftCardImage" 
+                        loading="lazy"
+                        onError={handleImageError}
+                        style={{ 
+                          backgroundImage: `url(${loaderGif})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center'
+                        }}
                       />
                       <div className="NftCardContent">
                         <h3 className="NftCardTitle">{item.name}</h3>
                         <p className="NftCardDescription">{item.description}</p>
                         <div className="account-badge">
-                          {item.accountId === 'GAHDNV6A6NSOQM5AMU64NH2LOOAIK474NCGX2FXTXBKD5YUZLTZQKSPV' && 
+                          {item.accountId ===
+                            'GAHDNV6A6NSOQM5AMU64NH2LOOAIK474NCGX2FXTXBKD5YUZLTZQKSPV' && (
                             <span className="badge bg-info">
                               <small>Featured Collection</small>
                             </span>
-                          }
-                          {item.accountId === publicKey && 
+                          )}
+                          {item.accountId === publicKey && (
                             <span className="badge bg-success">
                               <small>Your Collection</small>
                             </span>
-                          }
+                          )}
                           <span className="badge bg-light text-dark">
                             <small>Owner: {formatWalletAddress(item.accountId)}</small>
                           </span>
+                          {!item.isVerifiedOnStellar && (
+                            <span className="badge bg-warning">
+                              <small>Not Verified on Stellar</small>
+                            </span>
+                          )}
                         </div>
                         <div className="d-flex justify-content-between align-items-center mb-2">
-                          <span className="NftCardPrice">
-                            {item.price || '0'} XLM
-                          </span>
+                          <span className="NftCardPrice">{item.price || '0'} XLM</span>
                           <div>
                             <button
                               className="btn btn-outline-danger btn-sm me-2"
                               onClick={() => handleLike(item.itemId)}
                             >
-                              <FaHeart style={{ color: likedItems[item.itemId] ? '#dc3545' : 'inherit' }} /> {likes[item.itemId] || 0}
+                              <FaHeart style={{ color: likedItems[item.itemId] ? '#dc3545' : 'inherit' }} />{' '}
+                              {likes[item.itemId] || 0}
                             </button>
                             <button
                               className="btn btn-primary btn-sm"
@@ -516,10 +663,7 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
                 <div className="text-center my-5">
                   <h4>No NFTs Found</h4>
                   <p>Be the first to create an NFT marketplace listing!</p>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => navigate("/create")}
-                  >
+                  <button className="btn btn-primary" onClick={handleCreateClick}>
                     Create NFT
                   </button>
                 </div>
@@ -540,6 +684,7 @@ const HomePage = ({ marketplace, isConnected, walletBalance }) => {
           isConnected={isConnected}
         />
       )}
+      <ToastContainer />
     </div>
   );
 };

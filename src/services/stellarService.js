@@ -21,48 +21,33 @@ class StellarService {
     );
     
     console.log(`Network: ${StellarConfig.NETWORK}, Passphrase: ${this.networkPassphrase.substring(0, 20)}...`);
-    
-    // Keep track of last known fee stats
     this.lastFeeStats = null;
     this.lastFeeStatsTime = null;
-    
-    // Verification status
     this.initialized = false;
     this.initializationErrors = [];
     
-    // Auto-initialize in constructor
     this.initializeService().catch(error => {
       console.error('[INIT] Service initialization error:', error.message);
       this.initializationErrors.push(`Initialization error: ${error.message}`);
     });
   }
 
-  // Check if service is properly initialized
   isInitialized() {
     return this.initialized;
   }
 
-  // Get initialization errors
   getInitializationErrors() {
     return this.initializationErrors;
   }
   
-  // Initialize service and validate environment
   async initializeService() {
     console.log('[INIT] Starting Stellar service initialization and validation...');
     this.initializationErrors = [];
     
     try {
-      // 1. Validate required environment variables
       await this.validateEnvironmentVariables();
-      
-      // 2. Verify Stellar network connection
       await this.validateNetworkConnection();
-      
-      // 3. Validate issuer account
       await this.validateIssuerAccount();
-      
-      // Mark as initialized if all checks pass
       this.initialized = true;
       console.log('[INIT] ✅ Stellar service initialized successfully');
       return true;
@@ -76,7 +61,6 @@ class StellarService {
     }
   }
   
-  // Validate required environment variables
   async validateEnvironmentVariables() {
     console.log('[INIT] Validating environment variables...');
     const requiredVars = {
@@ -100,21 +84,18 @@ class StellarService {
       throw new Error(errorMsg);
     }
     
-    // Validate public key format
     if (process.env.STELLAR_ISSUER_PUBLIC_KEY && !this.validatePublicKey(process.env.STELLAR_ISSUER_PUBLIC_KEY)) {
       const errorMsg = 'STELLAR_ISSUER_PUBLIC_KEY has invalid format';
       this.initializationErrors.push(errorMsg);
       throw new Error(errorMsg);
     }
     
-    // Validate secret key format
     if (process.env.STELLAR_ISSUER_SECRET_KEY && !this.validateSecretKey(process.env.STELLAR_ISSUER_SECRET_KEY)) {
       const errorMsg = 'STELLAR_ISSUER_SECRET_KEY has invalid format';
       this.initializationErrors.push(errorMsg);
       throw new Error(errorMsg);
     }
     
-    // Verify keypair consistency
     if (process.env.STELLAR_ISSUER_PUBLIC_KEY && process.env.STELLAR_ISSUER_SECRET_KEY) {
       try {
         const keypair = Keypair.fromSecret(process.env.STELLAR_ISSUER_SECRET_KEY);
@@ -129,7 +110,7 @@ class StellarService {
           this.initializationErrors.push(errorMsg);
           throw new Error(errorMsg);
         } else {
-          throw error; // Re-throw the mismatch error
+          throw error;
         }
       }
     }
@@ -138,7 +119,6 @@ class StellarService {
     return true;
   }
   
-  // Validate network connection
   async validateNetworkConnection() {
     console.log('[INIT] Verifying Stellar network connection...');
     try {
@@ -146,7 +126,6 @@ class StellarService {
       console.log(`[INIT] ✅ Successfully connected to Stellar network (${StellarConfig.NETWORK})`);
       console.log(`[INIT] Horizon v${networkInfo.horizonVersion}, Core v${networkInfo.stellarCoreVersion}`);
       
-      // Verify network passphrase
       if (networkInfo.networkPassphrase !== this.networkPassphrase) {
         const errorMsg = `Network passphrase mismatch! Expected: ${this.networkPassphrase.substring(0, 20)}..., Got: ${networkInfo.networkPassphrase.substring(0, 20)}...`;
         this.initializationErrors.push(errorMsg);
@@ -161,7 +140,6 @@ class StellarService {
     }
   }
   
-  // Validate issuer account exists and is properly funded
   async validateIssuerAccount() {
     if (!process.env.STELLAR_ISSUER_PUBLIC_KEY) {
       const errorMsg = 'Cannot validate issuer account: STELLAR_ISSUER_PUBLIC_KEY is not defined';
@@ -173,7 +151,6 @@ class StellarService {
     try {
       const account = await this.getAccount(process.env.STELLAR_ISSUER_PUBLIC_KEY);
       
-      // Check if account has sufficient XLM balance
       const xlmBalance = account.balances.find(b => b.asset_type === 'native');
       if (!xlmBalance || parseFloat(xlmBalance.balance) < 5) {
         const warningMsg = `Warning: Issuer account has low XLM balance (${xlmBalance ? xlmBalance.balance : '0'} XLM). Recommended minimum is 5 XLM.`;
@@ -184,11 +161,9 @@ class StellarService {
       console.log(`[INIT] ✅ Issuer account validated: ${process.env.STELLAR_ISSUER_PUBLIC_KEY.substring(0, 5)}...${process.env.STELLAR_ISSUER_PUBLIC_KEY.substring(process.env.STELLAR_ISSUER_PUBLIC_KEY.length - 5)}`);
       return true;
     } catch (error) {
-      // Special handling for 404 errors
       if (error.response && error.response.status === 404) {
         const errorMsg = 'Issuer account does not exist on the Stellar network. It needs to be created and funded first.';
         
-        // Check if we're on testnet and can use friendbot
         if (StellarConfig.NETWORK === 'TESTNET') {
           console.log('[INIT] Issuer account not found. Attempting to create and fund with Friendbot...');
           try {
@@ -217,7 +192,6 @@ class StellarService {
     }
   }
 
-  // Initialize a new Stellar account
   async createAccount() {
     try {
       const pair = Keypair.random();
@@ -236,7 +210,6 @@ class StellarService {
     }
   }
 
-  // Check network status
   async checkNetworkStatus() {
     try {
       const serverInfo = await this.server.getRoot();
@@ -246,7 +219,6 @@ class StellarService {
       
       console.log(`Network Status: Horizon v${horizonVersion}, Stellar Core v${stellarCoreVersion}`);
       
-      // Check if the network passphrase matches what we expect
       if (networkPassphrase !== this.networkPassphrase) {
         console.warn(`Network passphrase mismatch! Expected: ${this.networkPassphrase}, Got: ${networkPassphrase}`);
       }
@@ -264,9 +236,7 @@ class StellarService {
     }
   }
   
-  // Get current fee stats from the network
   async getNetworkFeeStats() {
-    // Cache fee stats for 60 seconds to avoid excessive API calls
     const now = Date.now();
     if (this.lastFeeStats && this.lastFeeStatsTime && (now - this.lastFeeStatsTime < 60000)) {
       return this.lastFeeStats;
@@ -283,7 +253,6 @@ class StellarService {
       return feeStats;
     } catch (error) {
       console.error('Failed to get fee stats:', error);
-      // Return default fee stats if we can't get from network
       return {
         fee_charged: {
           min: parseInt(StellarConfig.TRANSACTION.FEE || BASE_FEE),
@@ -301,13 +270,11 @@ class StellarService {
     }
   }
   
-  // Estimate appropriate fee based on network conditions
   async estimateFee(priority = 'medium') {
     try {
       const feeStats = await this.getNetworkFeeStats();
       let fee;
       
-      // Select fee based on priority level
       switch (priority) {
         case 'low':
           fee = feeStats.fee_charged.p20;
@@ -325,7 +292,6 @@ class StellarService {
           fee = feeStats.fee_charged.p50;
       }
       
-      // Ensure minimum fee
       const minimumFee = parseInt(StellarConfig.TRANSACTION.FEE || BASE_FEE);
       fee = Math.max(fee, minimumFee);
       
@@ -337,7 +303,6 @@ class StellarService {
     }
   }
   
-  // Validate public key
   validatePublicKey(publicKey) {
     try {
       return StrKey.isValidEd25519PublicKey(publicKey);
@@ -347,7 +312,6 @@ class StellarService {
     }
   }
   
-  // Validate secret key
   validateSecretKey(secretKey) {
     try {
       return StrKey.isValidEd25519SecretSeed(secretKey);
@@ -357,9 +321,7 @@ class StellarService {
     }
   }
   
-  // Get account details with retry logic
   async getAccount(publicKey) {
-    // Validate public key
     if (!this.validatePublicKey(publicKey)) {
       console.error(`[ACCOUNT ERROR] Invalid Stellar public key format: ${publicKey}`);
       throw new Error(`Invalid Stellar public key: ${publicKey}`);
@@ -375,7 +337,6 @@ class StellarService {
     while (retryCount <= maxRetries) {
       try {
         const account = await this.server.loadAccount(publicKey);
-        // Log account details with sensitive info masked
         console.log(`[ACCOUNT] Account loaded successfully: ${publicKey.substring(0, 5)}...${publicKey.substring(publicKey.length - 5)}`);
         console.log(`[ACCOUNT] Sequence number: ${account.sequenceNumber()}`);
         console.log(`[ACCOUNT] Number of balances: ${account.balances.length}`);
@@ -391,17 +352,14 @@ class StellarService {
         lastError = error;
         console.error(`Error loading account (attempt ${retryCount + 1}/${maxRetries + 1}):`, error);
         
-        // Don't retry for 404 errors (account not found)
         if (error.response && error.response.status === 404) {
           throw error;
         }
         
-        // If it's the last retry, throw the error
         if (retryCount === maxRetries) {
           break;
         }
         
-        // Wait before retrying with exponential backoff
         const delay = 1000 * Math.pow(2, retryCount);
         await new Promise(resolve => setTimeout(resolve, delay));
         retryCount++;
@@ -411,7 +369,6 @@ class StellarService {
     throw lastError || new Error('Failed to load account after multiple attempts');
   }
 
-  // Ensure service is initialized before operations
   async ensureInitialized() {
     if (!this.initialized) {
       console.warn('[SERVICE] Service not initialized. Attempting initialization...');
@@ -425,47 +382,73 @@ class StellarService {
     return true;
   }
   
-  // Create NFT (as a Stellar asset)
-  async createNFT(name, description, totalSupply) {
+  async createNFT(userSecret, name, description, totalSupply) {
     try {
-      // Ensure service is initialized
       await this.ensureInitialized();
       
       // Input validation
-      if (!name || name.length > 12) {
+      if (!userSecret || typeof userSecret !== 'string') {
+        throw new Error('Invalid user secret key');
+      }
+      if (!this.validateSecretKey(userSecret)) {
+        throw new Error('Invalid user secret key format');
+      }
+      if (!name || name.length > 12 || !/^[a-zA-Z0-9]+$/.test(name)) {
         throw new Error('Asset name must be 1-12 alphanumeric characters');
       }
-      
       if (!totalSupply || isNaN(Number(totalSupply)) || Number(totalSupply) <= 0) {
         throw new Error('Total supply must be a positive number');
       }
       
-      const issuer = Keypair.fromSecret(process.env.STELLAR_ISSUER_SECRET_KEY);
-      const asset = new Asset(name, issuer.publicKey());
+      // Create keypair for user and issuer
+      const userKeypair = Keypair.fromSecret(userSecret);
+      const issuerPublicKey = process.env.STELLAR_ISSUER_PUBLIC_KEY;
       
-      // Get the account with retry logic
-      const sourceAccount = await this.getAccount(issuer.publicKey());
+      // Create the asset with the configured issuer
+      const asset = new Asset(name, issuerPublicKey);
       
-      // Create trustline and mint tokens with proper fee configuration
-      const transaction = new TransactionBuilder(sourceAccount, {
+      // Load user account
+      const userAccount = await this.getAccount(userKeypair.publicKey());
+      
+      // Check if user has a trustline for the asset
+      const hasTrustline = userAccount.balances.some(b => 
+        b.asset_type !== 'native' && 
+        b.asset_code === asset.getCode() && 
+        b.asset_issuer === asset.getIssuer()
+      );
+      
+      // Build transaction
+      const transactionBuilder = new TransactionBuilder(userAccount, {
         networkPassphrase: this.networkPassphrase,
-        fee: StellarConfig.TRANSACTION.FEE || '100' // Use configured fee or default to 100 stroops
-      })
-        .addOperation(Operation.changeTrust({
+        fee: await this.estimateFee('medium') // Use dynamic fee estimation
+      });
+      
+      // Add trustline operation if needed
+      if (!hasTrustline) {
+        transactionBuilder.addOperation(Operation.changeTrust({
           asset: asset,
           limit: totalSupply.toString()
-        }))
-        .addOperation(Operation.payment({
-          destination: issuer.publicKey(),
-          asset: asset,
-          amount: totalSupply.toString()
-        }))
+        }));
+      }
+      
+      // Add payment operation to mint tokens from issuer to user
+      transactionBuilder.addOperation(Operation.payment({
+        destination: userKeypair.publicKey(),
+        asset: asset,
+        amount: totalSupply.toString(),
+        source: issuerPublicKey // Issuer is the source of the payment
+      }));
+      
+      const transaction = transactionBuilder
         .setTimeout(StellarConfig.TRANSACTION.DEFAULT_TIMEOUT || 180)
         .build();
-
-      transaction.sign(issuer);
       
-      // Submit with retry logic and better error handling
+      // Sign with both user (for trustline and transaction) and issuer (for payment)
+      transaction.sign(userKeypair);
+      const issuerKeypair = Keypair.fromSecret(process.env.STELLAR_ISSUER_SECRET_KEY);
+      transaction.sign(issuerKeypair);
+      
+      // Submit transaction with retry logic
       return await this.submitTransactionWithRetry(transaction);
     } catch (error) {
       console.error('Error creating NFT:', error);
@@ -473,7 +456,6 @@ class StellarService {
     }
   }
 
-  // Validate transaction operations
   validateOperations(operations) {
     if (!operations || operations.length === 0) {
       return { valid: false, error: 'No operations provided' };
@@ -482,12 +464,10 @@ class StellarService {
     for (let i = 0; i < operations.length; i++) {
       const op = operations[i];
       
-      // Check operation type
       if (!op.type) {
         return { valid: false, error: `Operation at index ${i} has no type` };
       }
       
-      // Check specific operation types
       switch (op.type) {
         case 'payment':
           if (!op.destination) {
@@ -511,7 +491,6 @@ class StellarService {
           if (!op.name) {
             return { valid: false, error: `ManageData operation at index ${i} has no name` };
           }
-          // value can be null to delete data entry
           break;
       }
     }
@@ -519,7 +498,6 @@ class StellarService {
     return { valid: true };
   }
   
-  // Log transaction details before submission
   logTransactionDetails(transaction) {
     try {
       console.log('--------- Transaction Details ---------');
@@ -540,10 +518,8 @@ class StellarService {
       
       console.log('Operations:');
       transaction.operations.forEach((op, i) => {
-      transaction.operations.forEach((op, i) => {
         console.log(`[TX-OP ${i}] Type: ${op.type}`);
         
-        // Log operation details based on type
         switch (op.type) {
           case 'payment':
             const destMasked = `${op.destination.substring(0, 5)}...${op.destination.substring(op.destination.length - 5)}`;
@@ -558,6 +534,10 @@ class StellarService {
             }
             console.log(`[TX-OP ${i}] Asset: ${assetInfo}`);
             console.log(`[TX-OP ${i}] Amount: ${op.amount}`);
+            if (op.source) {
+              const sourceMasked = `${op.source.substring(0, 5)}...${op.source.substring(op.source.length - 5)}`;
+              console.log(`[TX-OP ${i}] Source: ${sourceMasked}`);
+            }
             break;
             
           case 'changeTrust':
@@ -575,7 +555,6 @@ class StellarService {
           case 'manageData':
             console.log(`[TX-OP ${i}] Name: ${op.name}`);
             if (op.value) {
-              // Try to decode if it's a string
               try {
                 const decodedValue = Buffer.from(op.value).toString('utf-8');
                 if (decodedValue.length > 30) {
@@ -595,7 +574,7 @@ class StellarService {
             console.log(`[TX-OP ${i}] [Details omitted for ${op.type}]`);
         }
       });
-      // Log transaction envelope XDR for debugging
+      
       try {
         const txXDR = transaction.toEnvelope().toXDR('base64');
         console.log(`[TX] Transaction XDR: ${txXDR.substring(0, 30)}...${txXDR.substring(txXDR.length - 30)}`);
@@ -609,7 +588,6 @@ class StellarService {
     }
   }
   
-  // Log account state before operations
   async logAccountState(publicKey, operationType = null) {
     try {
       console.log(`[DEBUG] Checking account state for ${publicKey.substring(0, 5)}... (${operationType || 'general'})`);
@@ -617,7 +595,6 @@ class StellarService {
       
       console.log(`[DEBUG] Account ${publicKey.substring(0, 5)}... sequence: ${account.sequenceNumber()}`);
       
-      // Log balance information
       account.balances.forEach(balance => {
         if (balance.asset_type === 'native') {
           console.log(`[DEBUG] Account balance: ${balance.balance} XLM`);
@@ -626,7 +603,6 @@ class StellarService {
         }
       });
       
-      // Check for trustlines if we're doing asset operations
       if (operationType === 'payment' || operationType === 'changeTrust') {
         console.log(`[DEBUG] Account has ${account.balances.length - 1} trustlines`);
       }
@@ -638,34 +614,28 @@ class StellarService {
     }
   }
   
-  // Helper method to submit transactions with retry logic and fee bumping
   async submitTransactionWithRetry(transaction, maxRetries = null, initialFee = null) {
-    // Validate transaction
     if (!transaction) {
       throw new Error('No transaction provided to submitTransactionWithRetry');
     }
     
-    // Configure retry parameters
     maxRetries = maxRetries || StellarConfig.TRANSACTION.MAX_RETRIES || 3;
     let retryCount = 0;
     let currentFee = initialFee || (StellarConfig.TRANSACTION.FEE || '100');
     let lastError = null;
     
-    // Check network status before submitting
     try {
       await this.checkNetworkStatus();
     } catch (error) {
       console.warn('Network status check failed, proceeding with submission anyway:', error.message);
     }
     
-    // Validate the transaction operations
     const validationResult = this.validateOperations(transaction.operations);
     if (!validationResult.valid) {
       console.error('Transaction validation failed:', validationResult.error);
       throw new Error(`Invalid transaction: ${validationResult.error}`);
     }
     
-    // Validate sequence number
     try {
       const sourceAccountId = transaction.source;
       const currentAccount = await this.getAccount(sourceAccountId);
@@ -683,10 +653,8 @@ class StellarService {
       console.warn('Sequence number validation failed, continuing anyway:', seqError.message);
     }
     
-    // Log transaction details before submission
     this.logTransactionDetails(transaction);
     
-    // Try to estimate appropriate fee
     try {
       const estimatedFee = await this.estimateFee('medium');
       const txFee = parseInt(transaction.fee);
@@ -697,12 +665,10 @@ class StellarService {
       console.warn('Fee estimation failed, continuing with provided fee:', feeError.message);
     }
     
-    // Finally, submit the transaction with retry logic
     while (retryCount <= maxRetries) {
       try {
         console.log(`[TX-SUBMIT] Submitting transaction (attempt ${retryCount + 1}/${maxRetries + 1})...`);
         
-        // Log network state before submission
         try {
           const networkStatus = await this.checkNetworkStatus();
           console.log(`[TX-SUBMIT] Network status: ${networkStatus.status}, Horizon v${networkStatus.horizonVersion}`);
@@ -710,14 +676,12 @@ class StellarService {
           console.warn(`[TX-SUBMIT] Failed to check network status before submission: ${networkError.message}`);
         }
         
-        // Log source account state right before submission
         try {
           await this.logAccountState(transaction.source, 'pre-submission');
         } catch (accountError) {
           console.warn(`[TX-SUBMIT] Failed to log account state: ${accountError.message}`);
         }
         
-        // Submit the transaction
         console.time('[TX-SUBMIT] Transaction submission time');
         const response = await this.server.submitTransaction(transaction);
         console.timeEnd('[TX-SUBMIT] Transaction submission time');
@@ -729,160 +693,132 @@ class StellarService {
         lastError = txError;
         console.error(`[TX-ERROR] Transaction submission error (attempt ${retryCount + 1}/${maxRetries + 1}):`);
         
-        // Log detailed error information
         if (txError.response) {
           console.error(`[TX-ERROR] Status: ${txError.response.status}`);
           console.error(`[TX-ERROR] Status Text: ${txError.response.statusText}`);
           
-          // Log response headers
           const headers = txError.response.headers;
           if (headers) {
             console.error(`[TX-ERROR] Response Headers: ${JSON.stringify(headers)}`);
           }
           
-          // Log response data
           if (txError.response.data) {
-        
-        // Extract detailed error information
-        let errorDetails = {
-          status: txError.response?.status,
-          message: txError.message,
-          resultCodes: txError.response?.data?.extras?.result_codes
-        };
-        
-        // Check for specific error conditions
-        const resultCodes = errorDetails.resultCodes;
-        
-        // Handle specific transaction error codes
-        if (resultCodes) {
-          console.error('Transaction result codes:', resultCodes);
-          
-          // Check for fee-related errors
-          if (resultCodes.transaction === 'tx_insufficient_fee') {
-            // Increase fee for retry - double it
-            if (retryCount < maxRetries) {
-              const newFee = parseInt(currentFee) * 2;
-              console.log(`Increasing fee from ${currentFee} to ${newFee} stroops and retrying...`);
-              currentFee = newFee.toString();
+            let errorDetails = {
+              status: txError.response?.status,
+              message: txError.message,
+              resultCodes: txError.response?.data?.extras?.result_codes
+            };
+            
+            const resultCodes = errorDetails.resultCodes;
+            
+            if (resultCodes) {
+              console.error('Transaction result codes:', resultCodes);
               
-              // Create a fee bump transaction
-              try {
-                const feeSource = Keypair.fromSecret(process.env.STELLAR_ISSUER_SECRET_KEY);
-                const bumpedTx = TransactionBuilder.buildFeeBumpTransaction(
-                  feeSource, 
-                  currentFee,
-                  transaction,
-                  this.networkPassphrase
-                );
-                bumpedTx.sign(feeSource);
-                transaction = bumpedTx; // Use bumped transaction for next attempt
-              } catch (bumpError) {
-                console.error('Error creating fee bump transaction:', bumpError);
-                // Continue to next retry with existing transaction
+              if (resultCodes.transaction === 'tx_insufficient_fee') {
+                if (retryCount < maxRetries) {
+                  const newFee = parseInt(currentFee) * 2;
+                  console.log(`Increasing fee from ${currentFee} to ${newFee} stroops and retrying...`);
+                  currentFee = newFee.toString();
+                  
+                  try {
+                    const feeSource = Keypair.fromSecret(process.env.STELLAR_ISSUER_SECRET_KEY);
+                    const bumpedTx = TransactionBuilder.buildFeeBumpTransaction(
+                      feeSource, 
+                      currentFee,
+                      transaction,
+                      this.networkPassphrase
+                    );
+                    bumpedTx.sign(feeSource);
+                    transaction = bumpedTx;
+                  } catch (bumpError) {
+                    console.error('Error creating fee bump transaction:', bumpError);
+                  }
+                  
+                  retryCount++;
+                  await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                  continue;
+                }
               }
               
-              retryCount++;
-              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-              continue;
-            }
-          }
-          
-          // Check for sequence number error
-          else if (resultCodes.transaction === 'tx_bad_seq') {
-            if (retryCount < maxRetries) {
-              console.log('Sequence number error, refreshing account and retrying...');
-              try {
-                // Get the source account from the transaction
-                const sourceAccountId = transaction.source;
-                
-                // Refresh the account to get the current sequence number
-                const updatedAccount = await this.getAccount(sourceAccountId);
-                
-                // Rebuild the transaction with the updated sequence number
-                // This is simplified - in a real implementation, you'd need to preserve all 
-                // the original operations and other transaction details
-                const rebuiltTx = new TransactionBuilder(updatedAccount, {
-                  fee: currentFee,
-                  networkPassphrase: this.networkPassphrase
+              else if (resultCodes.transaction === 'tx_bad_seq') {
+                if (retryCount < maxRetries) {
+                  console.log('Sequence number error, refreshing account and retrying...');
+                  try {
+                    const sourceAccountId = transaction.source;
+                    const updatedAccount = await this.getAccount(sourceAccountId);
+                    const rebuiltTx = new TransactionBuilder(updatedAccount, {
+                      fee: currentFee,
+                      networkPassphrase: this.networkPassphrase
+                    });
+                    
+                    for (const op of transaction.operations) {
+                      rebuiltTx.addOperation(op);
+                    }
+                    
+                    rebuiltTx.setTimeout(transaction.timeout || 180);
+                    const newTx = rebuiltTx.build();
+                    const sourceKeypair = Keypair.fromSecret(process.env.STELLAR_ISSUER_SECRET_KEY);
+                    newTx.sign(sourceKeypair);
+                    
+                    transaction = newTx;
+                  } catch (rebuildError) {
+                    console.error('Error rebuilding transaction:', rebuildError);
+                  }
+                  
+                  retryCount++;
+                  await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                  continue;
+                }
+              }
+              
+              else if (resultCodes.operations && resultCodes.operations.length > 0) {
+                const opErrors = resultCodes.operations.map((code, index) => {
+                  let errorMessage = code;
+                  
+                  switch (code) {
+                    case 'op_underfunded':
+                      errorMessage = `Operation ${index}: Insufficient funds`;
+                      break;
+                    case 'op_no_trust':
+                      errorMessage = `Operation ${index}: No trustline exists`;
+                      break;
+                    case 'op_no_issuer':
+                      errorMessage = `Operation ${index}: Asset issuer does not exist`;
+                      break;
+                    case 'op_no_destination':
+                      errorMessage = `Operation ${index}: Destination account does not exist`;
+                      break;
+                    case 'op_line_full':
+                      errorMessage = `Operation ${index}: Trustline is full`;
+                      break;
+                    case 'op_low_reserve':
+                      errorMessage = `Operation ${index}: Source or destination account balance would fall below minimum reserve`;
+                      break;
+                    case 'op_malformed':
+                      errorMessage = `Operation ${index}: Operation is malformed`;
+                      break;
+                  }
+                  
+                  return errorMessage;
                 });
                 
-                // Copy operations from original transaction
-                for (const op of transaction.operations) {
-                  rebuiltTx.addOperation(op);
-                }
-                
-                // Set the same timeout
-                rebuiltTx.setTimeout(transaction.timeout || 180);
-                
-                // Build and sign the transaction
-                const newTx = rebuiltTx.build();
-                const sourceKeypair = Keypair.fromSecret(process.env.STELLAR_ISSUER_SECRET_KEY);
-                newTx.sign(sourceKeypair);
-                
-                transaction = newTx;
-              } catch (rebuildError) {
-                console.error('Error rebuilding transaction:', rebuildError);
-                // If we can't rebuild, just try the next retry
+                throw new Error(`Transaction operation errors: ${opErrors.join(', ')}`);
+              } 
+              else if (resultCodes.transaction) {
+                throw new Error(`Transaction error: ${resultCodes.transaction}`);
               }
-              
+            }
+            
+            if (txError.response && txError.response.status === 429) {
+              const retryAfter = parseInt(txError.response.headers['retry-after'] || '5');
+              console.log(`Rate limited. Waiting ${retryAfter} seconds before retry...`);
+              await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
               retryCount++;
-              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
               continue;
             }
           }
-          
-          // Operation-specific errors
-          else if (resultCodes.operations && resultCodes.operations.length > 0) {
-            // Detailed error messages for common operation errors
-            const opErrors = resultCodes.operations.map((code, index) => {
-              let errorMessage = code;
-              
-              // Provide more detailed error messages for common error codes
-              switch (code) {
-                case 'op_underfunded':
-                  errorMessage = `Operation ${index}: Insufficient funds`;
-                  break;
-                case 'op_no_trust':
-                  errorMessage = `Operation ${index}: No trustline exists`;
-                  break;
-                case 'op_no_issuer':
-                  errorMessage = `Operation ${index}: Asset issuer does not exist`;
-                  break;
-                case 'op_no_destination':
-                  errorMessage = `Operation ${index}: Destination account does not exist`;
-                  break;
-                case 'op_line_full':
-                  errorMessage = `Operation ${index}: Trustline is full`;
-                  break;
-                case 'op_low_reserve':
-                  errorMessage = `Operation ${index}: Source or destination account balance would fall below minimum reserve`;
-                  break;
-                case 'op_malformed':
-                  errorMessage = `Operation ${index}: Operation is malformed`;
-                  break;
-              }
-              
-              return errorMessage;
-            });
-            
-            throw new Error(`Transaction operation errors: ${opErrors.join(', ')}`);
-          } 
-          // General transaction error
-          else if (resultCodes.transaction) {
-            throw new Error(`Transaction error: ${resultCodes.transaction}`);
-          }
         }
         
-        // If we have a rate limiting issue, wait longer before retrying
-        if (txError.response && txError.response.status === 429) {
-          const retryAfter = parseInt(txError.response.headers['retry-after'] || '5');
-          console.log(`Rate limited. Waiting ${retryAfter} seconds before retry...`);
-          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-          retryCount++;
-          continue;
-        }
-        
-        // For network errors, retry with backoff
         if (!txError.response || txError.message.includes('Network Error')) {
           if (retryCount < maxRetries) {
             const delay = 1000 * Math.pow(2, retryCount);
@@ -893,9 +829,7 @@ class StellarService {
           }
         }
         
-        // If we've reached the maximum retries or this isn't a retryable error, throw
         if (retryCount >= maxRetries) {
-          // Provide detailed error information
           const errorInfo = txError.response?.data || {};
           const errorMessage = errorInfo.title || txError.message || 'Unknown transaction error';
           const errorStatus = txError.response?.status || 'No status';
@@ -903,23 +837,18 @@ class StellarService {
           throw new Error(`Transaction failed after ${maxRetries + 1} attempts: ${errorStatus} - ${errorMessage}`);
         }
         
-        // Default - increment retry counter and continue
         retryCount++;
         await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
       }
     }
     
-    // If we somehow get here without throwing, throw the last error
     throw lastError || new Error('Transaction failed after multiple attempts');
   }
 
-  // Transfer NFT
   async transferNFT(fromSecret, toPublicKey, assetCode, amount) {
     try {
-      // Ensure service is initialized
       await this.ensureInitialized();
       
-      // Input validation
       if (!fromSecret || typeof fromSecret !== 'string') {
         throw new Error('Invalid source secret key');
       }
@@ -936,14 +865,11 @@ class StellarService {
         throw new Error('Invalid amount. Must be a positive number');
       }
       
-      // Create keypair and asset
       const source = Keypair.fromSecret(fromSecret);
       const asset = new Asset(assetCode, StellarConfig.ASSET.ISSUER);
       
-      // Load source account with retry logic
       const sourceAccount = await this.getAccount(source.publicKey());
       
-      // Check if source account has enough balance
       const assetBalance = sourceAccount.balances.find(b => 
         b.asset_type !== 'native' && 
         b.asset_code === asset.getCode() && 
@@ -954,20 +880,17 @@ class StellarService {
         throw new Error(`Insufficient balance: ${assetBalance ? assetBalance.balance : '0'} ${assetCode}`);
       }
       
-      // Check if destination account exists
       try {
         await this.getAccount(toPublicKey);
       } catch (error) {
         if (error.response && error.response.status === 404) {
           throw new Error('Destination account does not exist on the Stellar network');
         }
-        // If it's another error, we'll continue and let the transaction handling catch it
       }
       
-      // Create transaction with proper fee configuration
       const transaction = new TransactionBuilder(sourceAccount, {
         networkPassphrase: this.networkPassphrase,
-        fee: StellarConfig.TRANSACTION.FEE || '100' // Use configured fee or default to 100 stroops
+        fee: StellarConfig.TRANSACTION.FEE || '100'
       })
         .addOperation(Operation.payment({
           destination: toPublicKey,
@@ -977,10 +900,8 @@ class StellarService {
         .setTimeout(StellarConfig.TRANSACTION.DEFAULT_TIMEOUT || 180)
         .build();
       
-      // Sign the transaction
       transaction.sign(source);
       
-      // Submit with retry logic and better error handling
       return await this.submitTransactionWithRetry(transaction);
     } catch (error) {
       console.error('Error transferring NFT:', error);
@@ -988,10 +909,8 @@ class StellarService {
     }
   }
   
-  // Get NFT balance
   async getNFTBalance(publicKey, assetCode) {
     try {
-      // Ensure service is initialized
       await this.ensureInitialized();
       
       const account = await this.getAccount(publicKey);
@@ -1007,13 +926,11 @@ class StellarService {
       throw error;
     }
   }
-  // Get transaction history
+  
   async getTransactionHistory(publicKey) {
     try {
-      // Ensure service is initialized
       await this.ensureInitialized();
       
-    try {
       return await this.server.transactions()
         .forAccount(publicKey)
         .call();
@@ -1024,4 +941,5 @@ class StellarService {
   }
 }
 
-export default new StellarService(); 
+export default new StellarService();
+
