@@ -18,8 +18,15 @@ class StellarService {
    * Initializes the StellarService with configuration and validates the environment.
    * @constructor
    */
+  constructor() {
+    console.log(`Initializing StellarService with horizon: ${StellarConfig.HORIZON_URL || 'undefined'}`);
+    this.server = new Server(StellarConfig.HORIZON_URL || 'https://horizon-testnet.stellar.org');
+    this.networkPassphrase = StellarConfig.NETWORK_PASSPHRASE || (
+      StellarConfig.NETWORK === 'PUBLIC' 
+        ? Networks.PUBLIC
+        : Networks.TESTNET
+    );
 
-    
     console.log(`Network: ${StellarConfig.NETWORK || 'unknown'}, Passphrase: ${this.networkPassphrase.substring(0, 20)}...`);
     
     // Keep track of last known fee stats
