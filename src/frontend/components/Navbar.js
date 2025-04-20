@@ -23,6 +23,11 @@ const Navigation = () => {
         return parseFloat(balance).toFixed(2);
     };
 
+    const formatPublicKey = (key) => {
+        if (!key) return '';
+        return key.slice(0, 5) + '...' + key.slice(-5);
+    };
+
     return (
         <Navbar expand="lg" bg="secondary" variant="dark" className="custom-navbar">
             <Container>
@@ -50,7 +55,7 @@ const Navigation = () => {
                             <Dropdown>
                                 <Dropdown.Toggle variant="outline-light" id="wallet-dropdown" className="wallet-dropdown-toggle">
                                     <FaWallet className="me-2" />
-                                    {publicKey.slice(0, 5) + '...' + publicKey.slice(-5)}
+                                    {formatPublicKey(publicKey)}
                                     {walletMethod === 'walletconnect' && (
                                         <Badge bg="info" className="ms-2">WalletConnect</Badge>
                                     )}
