@@ -33,7 +33,6 @@ const Create = () => {
 
   // Verify environment variables on component mount
   useEffect(() => {
-    // Check for critical environment variables
     const missingVars = [];
     
     if (!process.env.REACT_APP_PINATA_API_KEY) missingVars.push('REACT_APP_PINATA_API_KEY');
@@ -57,7 +56,6 @@ const Create = () => {
     const file = event.target.files[0];
     if (file) {
       setSelectedFile(file);
-      // Create preview URL
       const reader = new FileReader();
       reader.onloadend = () => {
         setPreviewUrl(reader.result);
@@ -66,35 +64,31 @@ const Create = () => {
     }
   };
 
-  // Check if Pinata credentials are configured and validate them
+  // Check Pinata credentials
   useEffect(() => {
-    // Only validate if environment variables are properly loaded
     if (!envVarsLoaded) return;
     
     if (!pinataConfig.apiKey || !pinataConfig.apiSecret) {
-      console.warn('Pinata API credentials not found in environment variables. IPFS uploads may fail.');
-      setErrorMsg('Warning: IPFS configuration missing. Your NFT images may not be stored permanently.');
+      console.warn('Pinata API credentials not found in environment variables.');
+      setErrorMsg('Warning: IPFS configuration missing.');
       return;
     }
     
-    // Check if the values look like valid API keys (basic length validation)
     if (pinataConfig.apiKey === 'your-pinata-api-key' || 
         pinataConfig.apiSecret === 'your-pinata-api-secret') {
       setErrorMsg(
-        'Warning: You are using placeholder Pinata API keys. Follow these steps to fix:\n' +
+        'Warning: Using placeholder Pinata API keys.\n' +
         '1. Sign up at https://app.pinata.cloud\n' +
-        '2. Go to API Keys → New Key\n' +
-        '3. Create a key with "Admin" permissions\n' +
-        '4. Copy the values to your .env file\n' +
-        '5. Restart your development server'
+        '2. Create an API key with "Admin" permissions\n' +
+        '3. Update your .env file\n' +
+        '4. Restart your development server'
       );
       return;
     } else if (pinataConfig.apiKey.length < 10 || pinataConfig.apiSecret.length < 20) {
-      setErrorMsg('Warning: Your Pinata API keys appear to be invalid. API keys should be longer than 10 characters and API secrets longer than 20 characters.');
+      setErrorMsg('Warning: Invalid Pinata API keys.');
       return;
     }
     
-    // Test Pinata API credentials when component mounts
     const validatePinataCredentials = async () => {
       try {
         setStatusMsg('Verifying Pinata credentials...');
@@ -108,72 +102,60 @@ const Create = () => {
         if (response.status === 200) {
           console.log('Pinata credentials validated successfully');
           setStatusMsg('Pinata connection established');
-          setTimeout(() => setStatusMsg(''), 3000); // Clear message after 3 seconds
-        } else {
-          throw new Error(`Unexpected response: ${response.status}`);
+          setTimeout(() => setStatusMsg(''), 3000);
         }
       } catch (error) {
         console.error('Pinata credential validation failed:', error);
-        setErrorMsg('Error: Pinata credentials invalid. Please check your API keys in the .env file.');
+        setErrorMsg('Error: Invalid Pinata credentials.');
       }
     };
     
     validatePinataCredentials();
   }, [envVarsLoaded]);
-  
-  // Display helpful instructions if Pinata credentials are invalid
+
   useEffect(() => {
     if (errorMsg && errorMsg.includes('Pinata')) {
       console.info('To fix Pinata issues:');
       console.info('1. Create an account at https://app.pinata.cloud');
       console.info('2. Generate API keys at https://app.pinata.cloud/keys');
-      console.info('3. Add your keys to the .env file in the project root');
+      console.info('3. Add keys to .env file');
       console.info('4. Restart the development server');
     }
   }, [errorMsg]);
 
-  // Upload image to IPFS via Pinata
-  // Upload image to IPFS via Pinata with retry mechanism
   const uploadImage = async (file, maxRetries = 3, retryDelay = 2000) => {
     try {
       setStatusMsg('Preparing image upload...');
-      console.log(`Image file details: ${file.name}, type: ${file.type}, size: ${file.size / 1024} KB`);
+      console.log(`Image file: ${file.name}, type: ${file.type}, size: ${file.size / 1024} KB`);
       
-      // Create a local URL as a fallback
       const localUrl = URL.createObjectURL(file);
       
-      // Check if Pinata credentials are available
       if (!pinataConfig.apiKey || !pinataConfig.apiSecret) {
-        setStatusMsg('IPFS configuration missing. Using temporary local storage instead.');
-        console.warn('Pinata credentials missing in environment configuration.');
+        setStatusMsg('IPFS configuration missing. Using local storage.');
+        console.warn('Pinata credentials missing.');
         return { url: localUrl, source: 'local', success: false };
       }
       
-      // Check if file is too large
-      const maxFileSizeMB = 100; // Pinata's normal limit is ~90-100MB for free tier
+      const maxFileSizeMB = 100;
       const fileSizeMB = file.size / (1024 * 1024);
       if (fileSizeMB > maxFileSizeMB) {
-        const errorMsg = `File size (${fileSizeMB.toFixed(2)}MB) exceeds the maximum allowed (${maxFileSizeMB}MB).`;
+        const errorMsg = `File size (${fileSizeMB.toFixed(2)}MB) exceeds ${maxFileSizeMB}MB.`;
         console.error(errorMsg);
-        setStatusMsg(`${errorMsg} Using local storage instead.`);
+        setStatusMsg(`${errorMsg} Using local storage.`);
         return { url: localUrl, source: 'local', success: false };
       }
       
-      // Initialize retry counter
       let retryCount = 0;
       let lastError = null;
       
-      // Retry loop for uploads
       while (retryCount <= maxRetries) {
         try {
-          setStatusMsg(`Uploading image to IPFS via Pinata (${retryCount > 0 ? `retry ${retryCount}/${maxRetries}` : 'first attempt'})...`);
-          console.log(`Attempting to upload to Pinata (attempt ${retryCount + 1})...`);
+          setStatusMsg(`Uploading image to IPFS (${retryCount > 0 ? `retry ${retryCount}/${maxRetries}` : 'first attempt'})...`);
+          console.log(`Attempting Pinata upload (attempt ${retryCount + 1})...`);
           
-          // Prepare the image for upload
           const formData = new FormData();
           formData.append('file', file);
           
-          // Add metadata to help organize files
           const metadata = JSON.stringify({
             name: file.name,
             keyvalues: {
@@ -184,21 +166,18 @@ const Create = () => {
           });
           formData.append('pinataMetadata', metadata);
           
-          // Set pinata options
           const pinataOptions = JSON.stringify({
             cidVersion: 1,
             wrapWithDirectory: false
           });
           formData.append('pinataOptions', pinataOptions);
           
-          // Log headers being sent (with redacted secrets)
           console.log('Request headers:', {
             'Content-Type': 'multipart/form-data',
-            'pinata_api_key': `${pinataConfig.apiKey.substring(0, 3)}...${pinataConfig.apiKey.substring(pinataConfig.apiKey.length - 3)}`,
+            'pinata_api_key': `${pinataConfig.apiKey.substring(0, 3)}...`,
             'pinata_secret_api_key': '*** REDACTED ***'
           });
           
-          // Upload to Pinata with timeout handling
           const response = await axios.post(
             'https://api.pinata.cloud/pinning/pinFileToIPFS', 
             formData, 
@@ -214,23 +193,15 @@ const Create = () => {
             }
           );
           
-          // Log success response details (omitting sensitive data)
           console.log('Pinata upload response status:', response.status);
-          console.log('Pinata upload response headers:', response.headers);
           
-          // Validate response
           if (response.data && response.data.IpfsHash) {
             const ipfsUrl = `${pinataConfig.gateway}${response.data.IpfsHash}`;
-            console.log('Successfully uploaded to IPFS:', ipfsUrl);
-            console.log('IPFS Hash:', response.data.IpfsHash);
-            console.log('Size (bytes):', response.data.PinSize || 'unknown');
-            console.log('Timestamp:', response.data.Timestamp || new Date().toISOString());
-            
+            console.log('Uploaded to IPFS:', ipfsUrl);
             setStatusMsg('Image uploaded to IPFS successfully!');
             return { url: ipfsUrl, source: 'ipfs', hash: response.data.IpfsHash, success: true };
           } else {
-            console.error('Invalid Pinata response:', response.data);
-            throw new Error('No IPFS hash returned from Pinata');
+            throw new Error('No IPFS hash returned');
           }
         } catch (error) {
           lastError = error;
@@ -240,66 +211,43 @@ const Create = () => {
           if (error.code === 'ECONNABORTED') {
             errorMessage = 'Pinata upload timed out.';
           } else if (error.response) {
-            // Server responded with an error status
             const statusCode = error.response.status;
             const responseBody = error.response.data || {};
-            
             errorMessage = `Pinata error (${statusCode}): ${responseBody.message || 'Unknown error'}`;
-            console.error('Error response details:', {
-              status: statusCode,
-              data: responseBody,
-              headers: error.response.headers
-            });
-            
-            // Don't retry for client errors (4xx) except for rate limits (429)
             if (statusCode >= 400 && statusCode < 500 && statusCode !== 429) {
               shouldRetry = false;
             }
-            
-            // Special handling for specific errors
             if (statusCode === 401) {
-              errorMessage = 'Authentication failed. Please check your Pinata API keys.';
+              errorMessage = 'Authentication failed. Check Pinata API keys.';
               shouldRetry = false;
             } else if (statusCode === 429) {
-              errorMessage = 'Rate limit exceeded. Waiting before retry.';
-              // Increase delay for rate limit errors
+              errorMessage = 'Rate limit exceeded. Waiting.';
               await new Promise(resolve => setTimeout(resolve, retryDelay * 2));
             }
           } else if (error.request) {
-            // Request made but no response received
-            errorMessage = 'No response from Pinata servers. Check your internet connection.';
-            console.error('Request details:', {
-              method: 'POST',
-              url: 'https://api.pinata.cloud/pinning/pinFileToIPFS',
-              requestSize: file.size,
-              requestInitiated: new Date().toISOString()
-            });
+            errorMessage = 'No response from Pinata servers.';
           }
           
           console.error(`${errorMessage} (Attempt ${retryCount + 1}/${maxRetries + 1})`, error);
           
-          // If we shouldn't retry or this was the last attempt, throw the error
           if (!shouldRetry || retryCount >= maxRetries) {
             break;
           }
           
-          // Increase retry count and wait before next attempt
           retryCount++;
           setStatusMsg(`${errorMessage} Retrying... (${retryCount}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
       }
       
-      // If we get here, all retries failed
-      const finalErrorMsg = `Failed to upload to IPFS after ${maxRetries + 1} attempts. Using local storage as fallback.`;
+      const finalErrorMsg = `Failed to upload to IPFS after ${maxRetries + 1} attempts.`;
       console.error(finalErrorMsg, lastError);
       setStatusMsg(finalErrorMsg);
       return { url: localUrl, source: 'local', success: false, error: lastError?.message };
-      
     } catch (error) {
       const errorMsg = `Error in uploadImage: ${error.message}`;
       console.error(errorMsg, error);
-      setStatusMsg('Error processing image. Using local storage instead.');
+      setStatusMsg('Error processing image. Using local storage.');
       return { 
         url: URL.createObjectURL(file), 
         source: 'local', 
@@ -309,47 +257,39 @@ const Create = () => {
     }
   };
 
-  // Upload metadata to IPFS via Pinata with retry mechanism
   const uploadMetadata = async (metadata, maxRetries = 3, retryDelay = 2000) => {
     try {
       setStatusMsg('Preparing metadata upload...');
-      console.log('Metadata being prepared:', {
+      console.log('Metadata prepared:', {
         name: metadata.name,
         description: `${metadata.description?.substring(0, 20)}...`,
         hasImage: !!metadata.image
       });
       
-      // Create a local URL as a fallback for development
       const createLocalFallback = () => {
         const blob = new Blob([JSON.stringify(metadata)], { type: 'application/json' });
         return URL.createObjectURL(blob);
       };
       
-      // Check if Pinata credentials are available
       if (!pinataConfig.apiKey || !pinataConfig.apiSecret) {
-        setStatusMsg('IPFS configuration missing. Cannot upload metadata to IPFS.');
-        console.warn('Pinata credentials missing in environment configuration.');
-        
+        setStatusMsg('IPFS configuration missing.');
+        console.warn('Pinata credentials missing.');
         if (process.env.NODE_ENV === 'development') {
           const localUrl = createLocalFallback();
-          console.warn('Using local storage for metadata in development mode');
+          console.warn('Using local storage in development mode');
           return { url: localUrl, source: 'local', success: false };
         }
-        
-        throw new Error('Pinata API credentials not configured. Please add them to your environment variables.');
+        throw new Error('Pinata API credentials not configured.');
       }
       
-      // Initialize retry counter
       let retryCount = 0;
       let lastError = null;
       
-      // Retry loop for uploads
       while (retryCount <= maxRetries) {
         try {
-          setStatusMsg(`Uploading metadata to IPFS via Pinata (${retryCount > 0 ? `retry ${retryCount}/${maxRetries}` : 'first attempt'})...`);
-          console.log(`Attempting to upload metadata to Pinata (attempt ${retryCount + 1})...`);
+          setStatusMsg(`Uploading metadata to IPFS (${retryCount > 0 ? `retry ${retryCount}/${maxRetries}` : 'first attempt'})...`);
+          console.log(`Attempting metadata upload (attempt ${retryCount + 1})...`);
           
-          // Add metadata to help organize files on Pinata
           const pinataMetadata = {
             name: `NFT Metadata - ${metadata.name}`,
             keyvalues: {
@@ -360,27 +300,22 @@ const Create = () => {
             }
           };
           
-          // Set options for pinning
           const pinataOptions = {
             cidVersion: 1
           };
           
-          // Prepare the data to be sent
           const data = {
             pinataMetadata,
             pinataOptions,
             pinataContent: metadata
           };
           
-          // Log request details (with redacted sensitive info)
-          console.log('Metadata request details:', {
+          console.log('Metadata request:', {
             url: 'https://api.pinata.cloud/pinning/pinJSONToIPFS',
             contentSize: JSON.stringify(metadata).length,
-            pinataMetadata: pinataMetadata,
-            apiKeyPrefix: pinataConfig.apiKey.substring(0, 3)
+            pinataMetadata
           });
           
-          // Upload to Pinata with timeout handling
           const response = await axios.post(
             'https://api.pinata.cloud/pinning/pinJSONToIPFS', 
             data,
@@ -394,22 +329,15 @@ const Create = () => {
             }
           );
           
-          // Log success response details
           console.log('Pinata metadata upload response status:', response.status);
-          console.log('Pinata metadata upload response headers:', response.headers);
           
-          // Validate response
           if (response.data && response.data.IpfsHash) {
             const metadataUrl = `${pinataConfig.gateway}${response.data.IpfsHash}`;
-            console.log('Successfully uploaded metadata to IPFS:', metadataUrl);
-            console.log('Metadata IPFS Hash:', response.data.IpfsHash);
-            console.log('Size (bytes):', response.data.PinSize || 'unknown');
-            
+            console.log('Metadata uploaded to IPFS:', metadataUrl);
             setStatusMsg('Metadata uploaded to IPFS successfully!');
             return { url: metadataUrl, source: 'ipfs', hash: response.data.IpfsHash, success: true };
           } else {
-            console.error('Invalid Pinata metadata response:', response.data);
-            throw new Error('No IPFS hash returned from Pinata for metadata');
+            throw new Error('No IPFS hash returned for metadata');
           }
         } catch (error) {
           lastError = error;
@@ -417,82 +345,56 @@ const Create = () => {
           let shouldRetry = true;
           
           if (error.code === 'ECONNABORTED') {
-            errorMessage = 'Metadata upload to Pinata timed out.';
+            errorMessage = 'Metadata upload timed out.';
           } else if (error.response) {
-            // Server responded with an error status
             const statusCode = error.response.status;
             const responseBody = error.response.data || {};
-            
             errorMessage = `Pinata metadata error (${statusCode}): ${responseBody.message || 'Unknown error'}`;
-            console.error('Metadata error response details:', {
-              status: statusCode,
-              data: responseBody,
-              headers: error.response.headers
-            });
-            
-            // Don't retry for client errors (4xx) except for rate limits (429)
             if (statusCode >= 400 && statusCode < 500 && statusCode !== 429) {
               shouldRetry = false;
             }
-            
-            // Special handling for specific errors
             if (statusCode === 401) {
-              errorMessage = 'Authentication failed for metadata. Please check your Pinata API keys.';
+              errorMessage = 'Authentication failed for metadata.';
               shouldRetry = false;
             } else if (statusCode === 429) {
-              errorMessage = 'Rate limit exceeded for metadata. Waiting before retry.';
-              // Increase delay for rate limit errors
+              errorMessage = 'Rate limit exceeded for metadata.';
               await new Promise(resolve => setTimeout(resolve, retryDelay * 2));
             }
           } else if (error.request) {
-            // Request made but no response received
-            errorMessage = 'No response from Pinata servers for metadata. Check your internet connection.';
-            console.error('Metadata request details:', {
-              method: 'POST',
-              url: 'https://api.pinata.cloud/pinning/pinJSONToIPFS',
-              requestSize: JSON.stringify(metadata).length,
-              requestInitiated: new Date().toISOString()
-            });
+            errorMessage = 'No response from Pinata servers for metadata.';
           }
           
           console.error(`${errorMessage} (Attempt ${retryCount + 1}/${maxRetries + 1})`, error);
           
-          // If we shouldn't retry or this was the last attempt, go to fallback or throw
           if (!shouldRetry || retryCount >= maxRetries) {
             break;
           }
           
-          // Increase retry count and wait before next attempt
           retryCount++;
           setStatusMsg(`${errorMessage} Retrying metadata upload... (${retryCount}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
       }
       
-      // If we get here, all retries failed
       const finalErrorMsg = `Failed to upload metadata to IPFS after ${maxRetries + 1} attempts.`;
       console.error(finalErrorMsg, lastError);
       
-      // In development mode, we can use a local fallback
       if (process.env.NODE_ENV === 'development') {
         console.warn('Using local storage for metadata in development mode');
         const localUrl = createLocalFallback();
-        setStatusMsg(`${finalErrorMsg} Using temporary storage for metadata in development mode.`);
+        setStatusMsg(`${finalErrorMsg} Using temporary storage.`);
         return { url: localUrl, source: 'local', success: false, error: lastError?.message };
       }
       
-      // In production, we throw an error
       setStatusMsg(`${finalErrorMsg} Please try again later.`);
-      throw new Error(`${finalErrorMsg} Please try again later.`);
-      
+      throw new Error(`${finalErrorMsg}`);
     } catch (error) {
       const errorMsg = `Error in uploadMetadata: ${error.message}`;
       console.error(errorMsg, error);
-      setStatusMsg('Failed to upload metadata. Please try again.');
+      setStatusMsg('Failed to upload metadata.');
       
-      // Only use fallback in development mode
       if (process.env.NODE_ENV === 'development') {
-        console.warn('Using local fallback for metadata in development mode after error');
+        console.warn('Using local fallback for metadata');
         const blob = new Blob([JSON.stringify(metadata)], { type: 'application/json' });
         const localUrl = URL.createObjectURL(blob);
         return { url: localUrl, source: 'local', success: false, error: error.message };
@@ -502,21 +404,18 @@ const Create = () => {
     }
   };
 
-  // Create NFT
   async function createNFT() {
     try {
       setIsLoading(true);
       setErrorMsg('');
       setStatusMsg('Starting NFT creation process...');
-  
+
       // Helper function to ensure proper Stellar amount formatting
       const createPaymentAmount = (amount) => {
-        // Convert to string and ensure 7 decimal places
         const str = parseFloat(amount).toFixed(7);
-        // Remove any trailing zeros after decimal point
         return str.replace(/\.?0+$/, '');
       };
-  
+
       // Validate form inputs
       const { name, description, price, assetCode } = formInput;
       if (!name || !description || !price || !assetCode || !selectedFile) {
@@ -525,7 +424,7 @@ const Create = () => {
       if (!isConnected || !publicKey) {
         throw new Error('Please connect your Stellar wallet');
       }
-  
+
       // 1. Upload image to IPFS
       setStatusMsg('Uploading image to IPFS...');
       const imageResult = await uploadImage(selectedFile);
@@ -533,7 +432,7 @@ const Create = () => {
         throw new Error('Failed to upload image to IPFS');
       }
       console.log('Image uploaded as ipfs:', imageResult.url);
-  
+
       // 2. Prepare and upload metadata
       setStatusMsg('Preparing NFT metadata...');
       const metadata = {
@@ -551,16 +450,16 @@ const Create = () => {
         ],
       };
       console.log('Metadata being prepared:', metadata);
-  
+
       const metadataResult = await uploadMetadata(metadata);
       if (!metadataResult.success) {
         throw new Error('Failed to upload metadata to IPFS');
       }
       console.log('Metadata uploaded as ipfs:', metadataResult.url);
-  
+
       // 3. Create the NFT using Stellar
       setStatusMsg('Creating NFT on Stellar...');
-  
+
       const networkConfig = {
         network: process.env.REACT_APP_STELLAR_NETWORK || 'TESTNET',
         passphrase:
@@ -569,11 +468,11 @@ const Create = () => {
             : StellarSdk.Networks.PUBLIC,
       };
       console.log('Using network:', networkConfig.network);
-  
+
       // Initialize Stellar server
       const server = new StellarSdk.Horizon.Server(process.env.REACT_APP_HORIZON_URL);
       const sourceAccount = await server.loadAccount(publicKey);
-  
+
       // Validate asset code
       const validateAndNormalizeAssetCode = (rawAssetCode) => {
         const assetCode = rawAssetCode.replace(/[^a-zA-Z0-9]/g, '').trim().toUpperCase();
@@ -606,10 +505,10 @@ const Create = () => {
         });
         return assetCode;
       };
-  
+
       const validatedAssetCode = validateAndNormalizeAssetCode(assetCode);
       const nftAsset = new StellarSdk.Asset(validatedAssetCode, publicKey);
-  
+
       // Check account balance
       const xlmBalance = sourceAccount.balances.find((b) => b.asset_type === 'native');
       if (!xlmBalance) {
@@ -622,24 +521,24 @@ const Create = () => {
           `Insufficient XLM balance. At least ${requiredBalance} XLM required (current: ${balance.toFixed(7)} XLM)`
         );
       }
-  
+
       // Helper function to submit a transaction
       const submitTransaction = async (operations, description) => {
         try {
           const currentAccount = await server.loadAccount(publicKey);
           console.log(`Account sequence before ${description}:`, currentAccount.sequenceNumber());
-  
+
           const tx = new StellarSdk.TransactionBuilder(currentAccount, {
             fee: StellarSdk.BASE_FEE,
             networkPassphrase: networkConfig.passphrase,
           }).setTimeout(180);
-  
+
           operations.forEach((op, index) => {
             console.log(`Adding operation ${index + 1} to ${description}:`, {
               type: op.type,
               ...(op.type === 'payment'
                 ? {
-                    asset: op.asset.getCode(),
+                    asset: op.asset?.getCode(),
                     amount: op.amount,
                     destination: op.destination,
                   }
@@ -652,13 +551,13 @@ const Create = () => {
             });
             tx.addOperation(op);
           });
-  
+
           const built = tx.build();
           console.log(`${description} details:`, {
             operations: built.operations.map((op) => ({
               type: op.type,
               source: op.source || 'default',
-              ...(op.type === 'payment'
+              ...(op.type === 'payment' && op.asset
                 ? {
                     asset: op.asset.getCode(),
                     amount: op.amount,
@@ -675,17 +574,17 @@ const Create = () => {
             sourceAccount: built.source,
             fee: built.fee,
           });
-  
+
           const xdr = built.toXDR();
           console.log(`${description} XDR:`, xdr);
-  
+
           const result = await signAndSubmitTransaction(xdr);
           console.log(`${description} successful:`, result);
-  
+
           await new Promise((resolve) => setTimeout(resolve, 1000));
           const accountAfter = await server.loadAccount(publicKey);
           console.log(`Account sequence after ${description}:`, accountAfter.sequenceNumber());
-  
+
           return result;
         } catch (error) {
           console.error(`${description} failed:`, error);
@@ -696,17 +595,17 @@ const Create = () => {
               const opErrors = codes.operations.map((code, index) =>
                 `Operation ${index + 1}: ${code}`
               );
-              errorDetail += `\nOperation errors:\n${opErrors.join('\n')}`;
+              errorDetail += ` - Operations: [${opErrors.join(', ')}]`;
             }
             throw new Error(errorDetail);
           }
           throw error;
         }
       };
-  
+
       // Build transaction operations (skip changeTrust for issuer)
       const operations = [];
-  
+
       // Payment operation to issue the NFT
       console.log('Adding payment operation');
       operations.push(
@@ -716,7 +615,7 @@ const Create = () => {
           amount: '1.0000000', // Fixed amount for NFT
         })
       );
-  
+
       // ManageData operation for metadata
       if (metadataResult?.hash) {
         console.log('Adding manageData operation');
@@ -732,14 +631,14 @@ const Create = () => {
           console.warn('Metadata value exceeds 64 bytes, skipping metadata operation');
         }
       }
-  
+
       // Log operations
       console.log('Operations to be submitted:', operations.map((op, index) => ({
         index,
         type: op.type,
         ...(op.type === 'payment'
           ? {
-              asset: op.asset.getCode(),
+              asset: op.asset?.getCode(),
               destination: op.destination,
               amount: op.amount,
             }
@@ -750,29 +649,35 @@ const Create = () => {
             }
           : {}),
       })));
-  
+
       // Submit transaction
       console.log('Submitting NFT creation transaction');
       const result = await submitTransaction(operations, 'NFT creation');
       console.log('Transaction submitted successfully:', result);
-  
+
       setStatusMsg('NFT created successfully!');
-  
-      // Verify creation
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      const updatedAccount = await server.loadAccount(publicKey);
-      const nftBalance = updatedAccount.balances.find(
-        (b) =>
-          b.asset_type !== 'native' &&
-          b.asset_code === validatedAssetCode &&
-          b.asset_issuer === publicKey
+
+      // Verify creation by checking transaction effects
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      const transactionDetails = await server.transactions().transaction(result.hash).call();
+      const effects = await server.effects().forTransaction(result.hash).call();
+
+      const paymentEffect = effects.records.find(
+        (effect) =>
+          effect.type === 'account_credited' &&
+          effect.account === publicKey &&
+          effect.asset_code === validatedAssetCode &&
+          effect.asset_issuer === publicKey
       );
-  
-      if (nftBalance) {
-        console.log('NFT balance verified:', nftBalance.balance);
+
+      if (paymentEffect) {
+        console.log('NFT issuance verified:', {
+          amount: paymentEffect.amount,
+          asset: `${paymentEffect.asset_code}:${paymentEffect.asset_issuer}`,
+        });
         setStatusMsg('NFT created and verified successfully!');
         toast.success('NFT created successfully!');
-  
+
         // Reset form and navigate
         setFormInput({
           price: '',
@@ -784,7 +689,9 @@ const Create = () => {
         setPreviewUrl(null);
         navigate('/');
       } else {
-        throw new Error('NFT creation succeeded but verification failed');
+        console.error('NFT issuance not found. Transaction details:', transactionDetails);
+        console.error('Effects:', effects.records);
+        throw new Error('NFT creation succeeded but verification failed. Check transaction effects.');
       }
     } catch (error) {
       console.error('NFT creation error:', error);
@@ -817,7 +724,7 @@ const Create = () => {
       setStatusMsg('');
     }
   }
-  
+
   return (
     <div className="create-nft-container">
       <Container className="create-nft-content">
@@ -831,41 +738,41 @@ const Create = () => {
             <Form>
               <Form.Group className="mb-3">
                 <Form.Label>NFT Name</Form.Label>
-                      <Form.Control
-                        type="text"
+                <Form.Control
+                  type="text"
                   placeholder="NFT Name"
                   onChange={e => setFormInput({ ...formInput, name: e.target.value })}
                 />
-                    </Form.Group>
+              </Form.Group>
 
               <Form.Group className="mb-3">
                 <Form.Label>Description</Form.Label>
-                          <Form.Control
+                <Form.Control
                   as="textarea"
                   rows={3}
                   placeholder="NFT Description"
                   onChange={e => setFormInput({ ...formInput, description: e.target.value })}
                 />
-                        </Form.Group>
+              </Form.Group>
 
               <Form.Group className="mb-3">
                 <Form.Label>Price (XLM)</Form.Label>
-                        <Form.Control
+                <Form.Control
                   type="number"
                   placeholder="NFT Price in XLM"
                   onChange={e => setFormInput({ ...formInput, price: e.target.value })}
                 />
-                      </Form.Group>
+              </Form.Group>
               
               <Form.Group className="mb-3">
                 <Form.Label>Asset Code (max 12 characters)</Form.Label>
-                            <Form.Control
+                <Form.Control
                   type="text"
                   placeholder="Asset Code (e.g., MYNFT)"
                   maxLength={12}
                   onChange={e => setFormInput({ ...formInput, assetCode: e.target.value })}
                 />
-                          </Form.Group>
+              </Form.Group>
 
               <Form.Group className="mb-3">
                 <Form.Label>Upload Image</Form.Label>
@@ -890,13 +797,13 @@ const Create = () => {
                       {selectedFile.name}
                     </span>
                   )}
-                    </div>
+                </div>
                 {!selectedFile && (
                   <Form.Text className="text-muted">
                     Please select an image file for your NFT
                   </Form.Text>
                 )}
-                  </Form.Group>
+              </Form.Group>
 
               <Button
                 onClick={createNFT}
@@ -943,7 +850,7 @@ const Create = () => {
                 <p>{formInput.description || 'NFT Description'}</p>
                 <p className="price">{formInput.price ? `${formInput.price} XLM` : '0 XLM'}</p>
                 {formInput.assetCode && <p className="asset-code">Asset Code: {formInput.assetCode}</p>}
-                  </div>
+              </div>
             </div>
           </Col>
         </Row>
@@ -952,4 +859,4 @@ const Create = () => {
   );
 };
 
-export default Create;  
+export default Create;
