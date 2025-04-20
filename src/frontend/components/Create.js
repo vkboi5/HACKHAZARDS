@@ -10,7 +10,7 @@ import { toast } from 'react-hot-toast';
 
 const Create = () => {
   const navigate = useNavigate();
-  const { publicKey, isConnected, signTransaction } = useWalletConnect();
+  const { publicKey, isConnected, signAndSubmitTransaction } = useWalletConnect();
   const [formInput, setFormInput] = useState({
     price: '',
     name: '',
@@ -485,7 +485,7 @@ const Create = () => {
       setStatusMsg(`${finalErrorMsg} Please try again later.`);
       throw new Error(`${finalErrorMsg} Please try again later.`);
       
-      } catch (error) {
+    } catch (error) {
       const errorMsg = `Error in uploadMetadata: ${error.message}`;
       console.error(errorMsg, error);
       setStatusMsg('Failed to upload metadata. Please try again.');
@@ -501,560 +501,378 @@ const Create = () => {
       throw error;
     }
   };
-  async function createNFT() {
-    const { name, description, price, assetCode } = formInput;
-    
-    // Form validation
-    if (!name || !description || !price || !selectedFile) {
-      setErrorMsg('Please fill all fields and select an image');
-      return;
-    }
-    
-    // Validate asset code more thoroughly
-    if (!assetCode || assetCode.length < 1 || assetCode.length > 12) {
-      setErrorMsg('Asset code must be between 1 and 12 characters');
-      return;
-    }
-    
-    // Check for valid asset code format (alphanumeric only)
-    const assetCodeRegex = /^[a-zA-Z0-9]+$/;
-    if (!assetCodeRegex.test(assetCode)) {
-      setErrorMsg('Asset code must contain only letters and numbers');
-      return;
-    }
-    
-    // Additional validation for Stellar asset codes
-    if (assetCode.length > 4 && assetCode.length <= 12) {
-      // This is an alphanum12 asset code
-      console.log(`Using alphanum12 asset code: ${assetCode}`);
-    } else if (assetCode.length >= 1 && assetCode.length <= 4) {
-      // This is an alphanum4 asset code
-      console.log(`Using alphanum4 asset code: ${assetCode}`);
-    } else {
-      setErrorMsg('Asset code must be between 1 and 12 characters');
-      return;
-    }
-    
-    if (!isConnected) {
-      setErrorMsg('Please connect your Stellar wallet first');
-      return;
-    }
 
-    setIsLoading(true);
-    setErrorMsg('');
-    
+  // Create NFT
+  async function createNFT() {
     try {
-      // Upload image to IPFS
-      const imageResult = await uploadImage(selectedFile);
-      const imageUrl = imageResult.url;
-      setFileUrl(imageUrl);
-      console.log(`Image uploaded as ${imageResult.source}:`, imageUrl);
+      setIsLoading(true);
+      setErrorMsg('');
+      setStatusMsg('Starting NFT creation process...');
       
-      // Create metadata
-      const metadata = {
-        name,
-        description,
-        image: imageUrl,
-        price,
-        creator: publicKey,
-        created_at: new Date().toISOString(),
-        storage_type: imageResult.source // Track if we're using IPFS or local
+      // Helper function to ensure proper Stellar amount formatting
+      const createPaymentAmount = (amount) => {
+        // Convert to string and ensure 7 decimal places
+        const str = parseFloat(amount).toFixed(7);
+        // Remove any trailing zeros after decimal point
+        return str.replace(/\.?0+$/, '');
       };
 
-      // Upload metadata to IPFS
-      const metadataResult = await uploadMetadata(metadata);
-      const metadataUrl = metadataResult.url;
-      
-      // Validate metadataUrl
-      if (!metadataUrl || typeof metadataUrl !== 'string') {
-        throw new Error('Failed to get a valid metadata URL. Please try again.');
+      // 1. Upload image to IPFS
+      setStatusMsg('Uploading image to IPFS...');
+      const imageResult = await uploadImage(selectedFile);
+      if (!imageResult.success) {
+        throw new Error('Failed to upload image to IPFS');
       }
-      
-      console.log(`Metadata uploaded as ${metadataResult.source}:`, metadataUrl);
-      // Create NFT on Stellar
+      console.log('Image uploaded as ipfs:', imageResult.url);
+
+      // 2. Prepare and upload metadata
+      setStatusMsg('Preparing NFT metadata...');
+      const metadata = {
+        name: formInput.name,
+        description: formInput.description,
+        image: imageResult.url,
+        attributes: [
+          {
+            trait_type: "Asset Code",
+            value: formInput.assetCode
+          }
+        ]
+      };
+      console.log('Metadata being prepared:', metadata);
+
+      const metadataResult = await uploadMetadata(metadata);
+      if (!metadataResult.success) {
+        throw new Error('Failed to upload metadata to IPFS');
+      }
+      console.log('Metadata uploaded as ipfs:', metadataResult.url);
+
+      // 3. Create the NFT using Stellar
       setStatusMsg('Creating NFT on Stellar...');
       
-      // Use connected wallet public key instead of retrieving from localStorage
       if (!publicKey) {
-        throw new Error('Wallet not connected. Please connect your wallet first.');
+        throw new Error('Wallet not connected');
       }
-      
-      const sourcePublicKey = publicKey;
-      console.log('Using connected wallet address for NFT creation:', sourcePublicKey);
-      
-      // Initialize Stellar server and network configuration with proper error handling
-      const networkUrl = process.env.REACT_APP_HORIZON_URL || 'https://horizon-testnet.stellar.org';
-      const server = new StellarSdk.Horizon.Server(networkUrl);
-      
-      // Determine the appropriate network parameters based on environment
-      const networkMode = process.env.REACT_APP_STELLAR_NETWORK || 'TESTNET';
-      const networkPassphrase = networkMode === 'PUBLIC' 
-                              ? StellarSdk.Networks.PUBLIC 
-                              : StellarSdk.Networks.TESTNET;
-      console.log(`Using network: ${networkMode} with passphrase: ${networkPassphrase.substring(0, 20)}...`);
-      
-      // Get the source account with better error handling
-      let account;
-      try {
-        setStatusMsg('Verifying account on Stellar network...');
-        account = await server.loadAccount(sourcePublicKey);
-        setStatusMsg('Account verified. Preparing NFT creation...');
-      } catch (accountError) {
-        console.error('Account error:', accountError);
-        
-        // Check if this is a testnet and we can use Friendbot
-        if (networkPassphrase === StellarSdk.Networks.TESTNET) {
-          setStatusMsg('Account not found. Attempting to fund with Friendbot...');
-          
-          try {
-            const friendbotResponse = await axios.get(`https://friendbot.stellar.org?addr=${sourcePublicKey}`);
-            if (friendbotResponse.status === 200) {
-              setStatusMsg('Account funded! Continuing with NFT creation...');
-              // Load the newly created account
-              account = await server.loadAccount(sourcePublicKey);
-            } else {
-              throw new Error('Friendbot request failed with status: ' + friendbotResponse.status);
-            }
-          } catch (fundError) {
-            console.error('Funding error:', fundError);
-            throw new Error('Failed to create/fund account. Please ensure your account has XLM to cover transaction fees.');
-          }
-        } else {
-          // For public network or if Friendbot fails
-          throw new Error('Account not found or not activated. Please ensure your account exists and has XLM.');
-        }
-      }
-      
-      // Ensure account has enough XLM balance for operations
-      const balances = account.balances.filter(balance => balance.asset_type === 'native');
-      if (balances.length === 0 || parseFloat(balances[0].balance) < 5) {
-        throw new Error('Your account needs at least 5 XLM to create an NFT. Please add more XLM to your account.');
-      }
-      // Create the NFT asset with proper validation
-      let asset;
-      try {
-        console.log(`Creating asset with code: "${assetCode}" and issuer: "${sourcePublicKey}"`);
-        
-        // Create asset based on length (alpahnum4 vs alphanum12)
-        if (assetCode.length <= 4) {
-          asset = new StellarSdk.Asset(assetCode, sourcePublicKey);
-        } else {
-          asset = new StellarSdk.Asset(assetCode, sourcePublicKey);
-        }
-        
-        console.log('Asset created successfully:', asset);
-      } catch (assetError) {
-        console.error('Error creating asset:', assetError);
-        throw new Error(`Invalid asset code: ${assetError.message}`);
-      }
-      
-      // Log the asset details
-      console.log('Asset details:', {
-        code: asset.code,
-        issuer: asset.issuer,
-        type: asset.code.length <= 4 ? 'credit_alphanum4' : 'credit_alphanum12'
-      });
-      
-      // Handle long metadata URLs
-      let metadataValue;
-      if (metadataUrl.length > 64) {
-        // If URL is too long, store a hash or reference instead of truncating
-        // For this example, we'll use the IPFS hash if available
-        if (metadataResult.hash) {
-          metadataValue = metadataResult.hash;
-        } else {
-          // Create a shortened version with protocol and hash/id
-          const urlParts = metadataUrl.split('/');
-          const lastPart = urlParts[urlParts.length - 1];
-          metadataValue = `ipfs:${lastPart}`;
-        }
-      } else {
-        metadataValue = metadataUrl;
-      }
-      
-      // Reload account to get updated sequence number
-      account = await server.loadAccount(sourcePublicKey);
-      
-      
-      // Special handling for self-issued assets
-      // In Stellar, you can't create a trustline for assets you issue
-      // We'll try a different approach for NFT creation
-      console.log('Using self-issued asset approach for NFT creation');
-      // Verify network configuration with Freighter before proceeding
-      try {
-        console.log('Verifying network configuration with Freighter...');
-        setStatusMsg('Verifying wallet network configuration...');
-        
-        const freighterNetwork = await freighterApi.getNetworkDetails();
-        console.log('Freighter network details:', freighterNetwork);
-        
-        if (freighterNetwork.networkPassphrase !== networkPassphrase) {
-          console.error('Network mismatch:', {
-            expected: {
-              network: networkMode,
-              passphrase: networkPassphrase.substring(0, 30) + '...'
-            },
-            actual: {
-              network: freighterNetwork.network,
-              passphrase: freighterNetwork.networkPassphrase?.substring(0, 30) + '...'
-            }
-          });
-          throw new Error(`Network mismatch: Please ensure Freighter is connected to ${networkMode}. Current Freighter network: ${freighterNetwork.network}`);
-        }
-        console.log('Network configuration verified with Freighter');
-        setStatusMsg('Wallet network verified. Building transaction...');
-      } catch (networkError) {
-        console.error('Network verification error:', networkError);
-        setErrorMsg(`Please ensure Freighter is connected to the ${networkMode} network and try again.`);
-        setIsLoading(false);
-        return;
-      }
-      
-      // Create a single transaction that issues the NFT directly
-      try {
-        console.log('Building direct issuance transaction...');
-        setStatusMsg('Building NFT issuance transaction...');
-        
-        // Use a higher fee to ensure transaction priority during network congestion
-        const recommendedFee = StellarSdk.BASE_FEE * 5; // 5x the base fee
-        
-        // For NFTs, we'll just mark the asset in the account data
-        // rather than using trustlines for self-issued assets
-        const issueTransaction = new StellarSdk.TransactionBuilder(account, {
-          fee: recommendedFee.toString(),
-          networkPassphrase: networkPassphrase
-        })
-          .addOperation(StellarSdk.Operation.manageData({
-            name: `nft_${assetCode}`,
-            value: metadataValue
-          }))
-          .addOperation(StellarSdk.Operation.manageData({
-            name: `nft_${assetCode}_issued`,
-            value: 'true'
-          }))
-          // Add a memo to store additional information (optional)
-          .addMemo(StellarSdk.Memo.text(`NFT: ${assetCode}`))
-          .setTimeout(300) // Increase timeout to 300 seconds (5 minutes)
-          .build();
-        
-        // Sign using wallet provider
-        console.log('Requesting transaction signing from wallet...');
-        console.log('Requesting transaction signing from wallet...');
-        setStatusMsg('Please approve the transaction in your Freighter wallet...');
-        
-        // Declare variables for the signing process
-        let signedXdr; // Will hold the signed transaction
-        const signingStartTime = Date.now(); // Track signing start time for performance monitoring
-        try {
-          // Add timeout handling for transaction signing
-          const signingTimeout = 120000; // 2 minutes timeout for signing
-          setStatusMsg('Waiting for transaction approval in Freighter wallet...');
-          
-          // Create a promise that will resolve with the signed transaction or reject on timeout
-          const signingPromise = signTransaction(issueTransaction);
-          const timeoutPromise = new Promise((_, reject) => {
-              setTimeout(() => reject(new Error('Transaction signing timed out. Please try again.')), signingTimeout);
-          });
+      console.log('Using connected wallet address for NFT creation:', publicKey);
 
-          try {
-              // Race between signing and timeout
-              signedXdr = await Promise.race([signingPromise, timeoutPromise]);
-              const signingDuration = Date.now() - signingStartTime;
-              console.log(`Transaction signed in ${signingDuration}ms`);
-          } catch (timeoutError) {
-              if (timeoutError.message.includes('timed out')) {
-                  console.error('Transaction signing timed out');
-                  setStatusMsg('The signing request timed out. Please try again.');
-                  setErrorMsg('Please check if your Freighter wallet is unlocked and try again.');
-                  setIsLoading(false);
-                  return;
-              }
-              throw timeoutError;
-          }
-          
-          console.log('Received signed XDR:', signedXdr ? signedXdr.substring(0, 30) + '...' : 'null');
-          
-          // Clear signing prompt after success
-          setStatusMsg('Transaction signed successfully. Preparing submission...');
-        } catch (signingError) {
-          // Check if this was likely a user cancellation
-          if (signingError.message && (
-              signingError.message.includes('cancel') || 
-              signingError.message.includes('reject') || 
-              signingError.message.includes('refused') || 
-              signingError.message.includes('denied'))) {
-            setStatusMsg('Transaction signing was cancelled.');
-            setErrorMsg('You cancelled the transaction signing. Please try again when you are ready to sign.');
-            setIsLoading(false);
-            return;
-          }
-          
-          // If it's another type of signing error
-          setErrorMsg(`Error signing transaction: ${signingError.message}`);
-          setIsLoading(false);
-          return;
+      const networkConfig = {
+        network: process.env.REACT_APP_STELLAR_NETWORK || 'TESTNET',
+        passphrase: process.env.REACT_APP_STELLAR_NETWORK === 'TESTNET' 
+          ? 'Test SDF Network ; September 2015' 
+          : 'Public Global Stellar Network ; September 2015'
+      };
+      console.log('Using network:', networkConfig.network, 'with passphrase:', networkConfig.passphrase);
+
+      // Build the transaction
+      const server = new StellarSdk.Horizon.Server(process.env.REACT_APP_HORIZON_URL);
+      const sourceAccount = await server.loadAccount(publicKey);
+
+      // Single asset code validation function
+      const validateAndNormalizeAssetCode = (rawAssetCode) => {
+        // First, strip any whitespace and non-alphanumeric characters
+        const assetCode = rawAssetCode.replace(/[^a-zA-Z0-9]/g, '').trim().toUpperCase();
+        
+        // Basic validation
+        if (!assetCode) {
+          throw new Error('Asset code is required');
+        }
+        if (assetCode.length < 1 || assetCode.length > 12) {
+          throw new Error('Asset code must be between 1 and 12 characters');
+        }
+        if (!/^[A-Z0-9]+$/.test(assetCode)) {
+          throw new Error('Asset code must contain only uppercase letters and numbers');
         }
         
-        // Additional validation for the signed transaction
-        if (!signedXdr) {
-          console.error('No signed XDR received from wallet');
-          setErrorMsg('Transaction could not be signed. Please try again or check your wallet connection.');
-          setIsLoading(false);
-          return;
+        // Additional Stellar-specific validations
+        if (/XLM/i.test(assetCode)) {
+          throw new Error('Asset code cannot contain "XLM"');
         }
-        
-        // Submit transaction with retry mechanism
-        const maxRetries = 3;
-        let currentRetry = 0;
-        let lastError = null;
-        
-        while (currentRetry <= maxRetries) {
-          try {
-            // Prepare status message with retry information
-            if (currentRetry === 0) {
-              setStatusMsg('Submitting transaction to the Stellar network...');
-            } else {
-              setStatusMsg(`Retrying transaction submission (attempt ${currentRetry}/${maxRetries})...`);
-            }
-            
-            // Submit transaction
-            const server = new StellarSdk.Horizon.Server(networkUrl);
-            
-            // Create a transaction object from the XDR
-            console.log('Using networkPassphrase:', networkPassphrase);
-            
-            let submittableTransaction;
-            try {
-              // Using newer Transaction constructor (recommended)
-              submittableTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXdr, networkPassphrase);
-              console.log('Created transaction from XDR using TransactionBuilder');
-            } catch (parseError) {
-              console.error('Failed to parse with TransactionBuilder:', parseError);
-              
-              try {
-                // Try an alternative method with the Transaction constructor
-                const envelope = StellarSdk.xdr.TransactionEnvelope.fromXDR(signedXdr, 'base64');
-                submittableTransaction = new StellarSdk.Transaction(envelope, networkPassphrase);
-                console.log('Created transaction using Transaction constructor');
-              } catch (parseError2) {
-                console.error('Failed to parse with Transaction constructor:', parseError2);
-                throw new Error('Could not parse the signed transaction. Please try again.');
-              }
-            }
-            
-            // Submit the transaction
-            console.log(`Submitting transaction to network (attempt ${currentRetry + 1}/${maxRetries + 1})`);
-            const result = await server.submitTransaction(submittableTransaction);
-            
-            console.log("Transaction successful:", result);
-            setIsLoading(false);
-            setStatusMsg('NFT created successfully!');
-            toast.success('NFT created successfully! Your new NFT is now available.');
-            setTimeout(() => {
-              navigate('/');
-            }, 2000);
-            return; // Exit early since we used an alternative approach
-          } catch (submissionError) {
-            lastError = submissionError;
-            
-            // Determine if we should retry based on error type
-            let shouldRetry = true;
-            let errorMessage = 'Error submitting transaction';
-            
-            // Determine the detailed error based on response information
-            if (submissionError.response) {
-              console.error('Error response from server:', submissionError.response.data);
-              
-              // For HTTP status code analysis
-              const statusCode = submissionError.response.status;
-              
-              // Check for specific Stellar errors in the response
-              if (submissionError.response.data.extras && submissionError.response.data.extras.result_codes) {
-                const resultCodes = submissionError.response.data.extras.result_codes;
-                console.error('Result codes:', resultCodes);
-                
-                // Check for transaction errors
-                if (resultCodes.transaction) {
-                  const txCode = resultCodes.transaction;
-                  
-                  // Handle common transaction error codes
-                  switch (txCode) {
-                    case 'tx_bad_seq':
-                      errorMessage = 'Transaction sequence number is incorrect. Refreshing account details...';
-                      // This error is retryable by refreshing the account
-                      try {
-                        account = await server.loadAccount(sourcePublicKey);
-                        // Continue to retry
-                      } catch (refreshError) {
-                        console.error('Error refreshing account:', refreshError);
-                      }
-                      break;
-                      
-                    case 'tx_failed':
-                      errorMessage = 'Transaction failed. Please check the operation details.';
-                      // Check operation errors for more details
-                      if (resultCodes.operations && resultCodes.operations.length > 0) {
-                        errorMessage += ` Operation errors: ${resultCodes.operations.join(', ')}`;
-                      }
-                      // Most tx_failed errors can be retried
-                      break;
-                      
-                    case 'tx_too_early':
-                    case 'tx_too_late':
-                      errorMessage = 'Transaction timed out. Creating a new transaction...';
-                      // These errors require a new transaction to be built
-                      // Refresh the account and break out of the retry loop
-                      shouldRetry = false;
-                      break;
-                      
-                    case 'tx_insufficient_fee':
-                      errorMessage = 'Transaction fee is too low. Increasing fee...';
-                      // Retrying with higher fee might help
-                      // But we'd need to rebuild and resign the transaction
-                      shouldRetry = false;
-                      break;
-                      
-                    default:
-                      errorMessage = `Transaction error: ${txCode}`;
-                      // Most other transaction errors are not retryable without changes
-                      shouldRetry = false;
-                  }
-                } else if (resultCodes.operations && resultCodes.operations.length > 0) {
-                  // Only operation errors
-                  errorMessage = `Operation errors: ${resultCodes.operations.join(', ')}`;
-                  // Most operation errors are not retryable without changes
-                  shouldRetry = false;
-                }
-              } else if (statusCode === 504 || statusCode === 408) {
-                // Gateway timeout or request timeout
-                errorMessage = 'Network timeout. Retrying transaction submission...';
-                // These are definitely retryable errors
-                shouldRetry = true;
-                
-                // Wait longer before retry
-                await new Promise(resolve => setTimeout(resolve, 3000));
-              } else if (statusCode === 429) {
-                // Rate limiting
-                errorMessage = 'Rate limit exceeded. Waiting before retrying...';
-                shouldRetry = true;
-                
-                // Get retry-after header if available, or use default backoff
-                const retryAfter = parseInt(submissionError.response.headers['retry-after'] || '5', 10);
-                await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-              } else if (statusCode >= 500) {
-                // Server errors are generally retryable
-                errorMessage = `Server error (${statusCode}). Retrying...`;
-                shouldRetry = true;
-              } else {
-                // Other client errors are generally not retryable
-                errorMessage = `HTTP error ${statusCode}: ${submissionError.response.statusText || 'Unknown error'}`;
-                shouldRetry = false;
-              }
-            } else if (!submissionError.response && (submissionError.message.includes('Network Error') || submissionError.message.includes('timeout'))) {
-              // Network connection issues
-              errorMessage = 'Network connection issue. Retrying...';
-              shouldRetry = true;
-              
-              // Add a longer delay for network issues
-              await new Promise(resolve => setTimeout(resolve, 3000));
-            } else {
-              // General error without specific HTTP status
-              errorMessage = `Error: ${submissionError.message}`;
-              shouldRetry = (currentRetry < maxRetries); // Retry a few times for unknown errors
-            }
-            
-            // Log the error and update status
-            console.error(`Transaction attempt ${currentRetry + 1}/${maxRetries + 1} failed:`, errorMessage);
-            setStatusMsg(`${errorMessage} ${shouldRetry ? 'Retrying...' : ''}`);
-            
-            // If we shouldn't retry or this is the last attempt, break the loop
-            if (!shouldRetry || currentRetry >= maxRetries) {
-              break;
-            }
-            
-            // Increment retry counter and add delay before next attempt
-            currentRetry++;
-            await new Promise(resolve => setTimeout(resolve, 2000 * currentRetry)); // Increasing backoff
-          }
-        }
-        
-        // If we get here with lastError, all retries have failed
-        if (lastError) {
-          console.error('All transaction submission attempts failed:', lastError);
-          
-          // Provide user-friendly error message
-          let finalErrorMessage = 'Transaction submission failed after multiple attempts.';
-          
-          if (lastError.response && lastError.response.data && lastError.response.data.extras && lastError.response.data.extras.result_codes) {
-            const resultCodes = lastError.response.data.extras.result_codes;
-            
-            if (resultCodes.transaction) {
-              finalErrorMessage += ` Transaction error: ${resultCodes.transaction}.`;
-            }
-            
-            if (resultCodes.operations && resultCodes.operations.length > 0) {
-              finalErrorMessage += ` Operation errors: ${resultCodes.operations.join(', ')}.`;
-            }
-          } else if (lastError.message) {
-            finalErrorMessage += ` Reason: ${lastError.message}`;
-          }
-          
-          setErrorMsg(finalErrorMessage);
-          setStatusMsg('Failed to create NFT. Please try again later.');
-          setIsLoading(false);
-        }
-      } catch (directIssueError) {
-        console.error('Direct issuance error:', directIssueError);
-        
-        // Log more details for transaction submission errors
-        if (directIssueError.response) {
-          console.error('Error response from server:', directIssueError.response.data);
-          if (directIssueError.response.data.extras && directIssueError.response.data.extras.result_codes) {
-            console.error('Result codes:', directIssueError.response.data.extras.result_codes);
-            
-            // More user-friendly error message based on result codes
-            const resultCodes = directIssueError.response.data.extras.result_codes;
-            if (resultCodes.operations && resultCodes.operations.length > 0) {
-              setErrorMsg(`Transaction failed: ${resultCodes.operations.join(', ')}`);
-            } else if (resultCodes.transaction) {
-              setErrorMsg(`Transaction failed: ${resultCodes.transaction}`);
-            }
+        if (assetCode.length <= 4) {
+          // For 4-character codes (ALPHANUM4), additional validation
+          if (!/^[A-Z][A-Z0-9]{0,3}$/.test(assetCode)) {
+            throw new Error('Short asset codes (1-4 characters) must start with a letter');
           }
         } else {
-          // Check for user cancellation in the error message
-          if (directIssueError.message && (
-              directIssueError.message.includes('cancel') || 
-              directIssueError.message.includes('reject') || 
-              directIssueError.message.includes('denied'))) {
-            setErrorMsg('Transaction was cancelled. Please try again when you are ready.');
-          } else {
-            setErrorMsg(`Failed to create NFT: ${directIssueError.message}`);
+          // For 12-character codes (ALPHANUM12), additional validation
+          if (!/^[A-Z][A-Z0-9]{4,11}$/.test(assetCode)) {
+            throw new Error('Long asset codes (5-12 characters) must start with a letter');
           }
         }
         
-        setIsLoading(false);
+        // Log the validated asset code
+        console.log('Asset code validated:', {
+          original: rawAssetCode,
+          normalized: assetCode,
+          length: assetCode.length,
+          type: assetCode.length <= 4 ? 'ALPHANUM4' : 'ALPHANUM12'
+        });
+        
+        return assetCode;
+      };
+
+      // Validate asset code
+      const validatedAssetCode = validateAndNormalizeAssetCode(formInput.assetCode);
+      const asset = new StellarSdk.Asset(validatedAssetCode, publicKey);
+
+      // Check if the trustline already exists
+      const trustlines = sourceAccount.balances.find(balance => 
+        balance.asset_type !== 'native' && 
+        balance.asset_code === validatedAssetCode && 
+        balance.asset_issuer === publicKey
+      );
+
+      // Check account balance
+      const xlmBalance = sourceAccount.balances.find(b => b.asset_type === 'native');
+      if (!xlmBalance) {
+        throw new Error('Unable to determine XLM balance');
       }
-    } catch (error) {
-      console.error('Error creating NFT: ', error);
-      // Provide user-friendly error message
-      const errorMessage = error.message || 'Unknown error occurred';
-      setErrorMsg(`Error creating NFT: ${errorMessage}`);
       
-      // Additional logging for debugging
-      if (error.response) {
-        console.error('Response data:', error.response.data);
-        console.error('Response status:', error.response.status);
-        console.error('Response headers:', error.response.headers);
-      } else if (error.request) {
-        console.error('Request made but no response received:', error.request);
-      } else {
-        console.error('Error setting up request:', error.message);
+      const balance = parseFloat(xlmBalance.balance);
+      const requiredBalance = 1.5; // Base reserve + trustline + buffer
+      
+      if (balance < requiredBalance) {
+        throw new Error(`Insufficient XLM balance. At least ${requiredBalance} XLM required (current: ${balance.toFixed(7)} XLM)`);
       }
+      
+      // Helper function to create and submit a transaction
+      const submitTransaction = async (operations, description) => {
+        try {
+          // Get a fresh account for each transaction
+          const currentAccount = await server.loadAccount(publicKey);
+          
+          // Log current account sequence number
+          console.log(`Account sequence before ${description}:`, currentAccount.sequenceNumber());
+          
+          // Build transaction
+          // Build transaction with explicit sequence number management
+          const tx = new StellarSdk.TransactionBuilder(currentAccount, {
+            fee: StellarSdk.BASE_FEE,
+            networkPassphrase: networkConfig.passphrase
+          })
+          .setTimeout(180);
+          
+          // Log transaction builder state
+          console.log('Transaction builder initialized:', {
+            sourceAccount: currentAccount.accountId(),
+            sequenceNumber: currentAccount.sequenceNumber(),
+            networkPassphrase: networkConfig.passphrase.substring(0, 20) + '...',
+            fee: StellarSdk.BASE_FEE
+          });
+          // Add operations one by one and log details
+          operations.forEach((op, index) => {
+            console.log(`Adding operation ${index + 1} to ${description}:`, {
+              type: op.type,
+              ...(op.type === 'payment' ? {
+                asset: op.asset.getCode(),
+                amount: op.amount,
+                destination: op.destination
+              } : {})
+            });
+            tx.addOperation(op);
+          });
+          
+          const built = tx.build();
+          
+          // Log complete transaction details before submission
+          console.log(`${description} details:`, {
+            operations: built.operations.map(op => ({
+              type: op.type,
+              source: op.source || 'default',
+              ...(op.type === 'payment' ? {
+                asset: op.asset.getCode(),
+                amount: op.amount,
+                destination: op.destination
+              } : {})
+            })),
+            sequence: built.sequence,
+            sourceAccount: built.source,
+            fee: built.fee
+          });
+          
+          const xdr = built.toXDR();
+          console.log(`${description} XDR:`, xdr);
+          
+          // Submit and wait for confirmation
+          const result = await signAndSubmitTransaction(xdr);
+          console.log(`${description} successful:`, result);
+          
+          // Wait for network to process
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Verify account state after transaction
+          const accountAfter = await server.loadAccount(publicKey);
+          console.log(`Account sequence after ${description}:`, accountAfter.sequenceNumber());
+          
+          return result;
+        } catch (error) {
+          console.error(`${description} failed:`, error);
+          
+          // Enhanced error reporting
+          if (error.response?.data?.extras?.result_codes) {
+            const codes = error.response.data.extras.result_codes;
+            let errorDetail = `${description} failed: ${codes.transaction || 'Unknown error'}`;
+            
+            if (codes.operations) {
+              const opErrors = codes.operations.map((code, index) => 
+                `Operation ${index + 1}: ${code}`
+              );
+              errorDetail += `\nOperation errors:\n${opErrors.join('\n')}`;
+            }
+            
+            throw new Error(errorDetail);
+          }
+          
+          throw error;
+        }
+      };
+
+      // Create single transaction with all operations
+      // Create single transaction with all operations
+      const operations = [];
+      
+      // Create and validate asset instance once
+      const nftAsset = new StellarSdk.Asset(
+        validatedAssetCode,
+        publicKey
+      );
+      
+      // Log asset details for verification
+      console.log('NFT asset details:', {
+        code: nftAsset.getCode(),
+        issuer: nftAsset.getIssuer(),
+        type: nftAsset.getAssetType(),
+        length: nftAsset.getCode().length
+      });
+
+      // Verify asset code format
+      if (nftAsset.getCode().length <= 4) {
+        console.log('Using ALPHANUM4 asset type');
+      } else {
+        console.log('Using ALPHANUM12 asset type');
+      }
+      
+      // 1. Add trustline operation if needed
+      if (!trustlines) {
+        console.log('Adding changeTrust operation');
+        operations.push(
+          StellarSdk.Operation.changeTrust({
+            asset: nftAsset,
+            limit: "1"
+          })
+        );
+      }
+      
+      // 2. Payment operation for NFT issuance
+      console.log('Adding payment operation');
+      operations.push(
+        StellarSdk.Operation.payment({
+          destination: publicKey,
+          asset: nftAsset,
+          amount: "1.0000000"  // Fixed amount for NFT
+        })
+      );
+      // 3. Add metadata if available
+      if (metadataResult?.hash) {
+        console.log('Adding manageData operation');
+        const metadataValue = Buffer.from(metadataResult.hash);
+        if (metadataValue.length <= 64) {
+          operations.push(
+            StellarSdk.Operation.manageData({
+              name: `nft_${validatedAssetCode}_metadata`,
+              value: metadataValue
+            })
+          );
+        } else {
+          console.warn('Metadata value exceeds 64 bytes, skipping metadata operation');
+        }
+      }
+
+      // Log the complete operation list
+      console.log('Operations to be submitted:', operations.map((op, index) => ({
+        index,
+        type: op.type,
+        ...(op.type === 'payment' ? {
+          asset: op.asset.getCode(),
+          destination: op.destination,
+          amount: op.amount
+        } : op.type === 'changeTrust' ? {
+          asset: op.asset.getCode(),
+          limit: op.limit
+        } : {})
+      })));
+
+      // Submit all operations in a single transaction
+      console.log('Submitting NFT creation transaction');
+      const result = await submitTransaction(operations, "NFT creation");
+      console.log('Transaction submitted successfully:', result);
+      
+      setStatusMsg('NFT created successfully!');
+      
+      // Wait briefly before verifying to allow for network propagation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Verify creation
+      const updatedAccount = await server.loadAccount(publicKey);
+      const nftBalance = updatedAccount.balances.find(b => 
+        b.asset_type !== 'native' && 
+        b.asset_code === validatedAssetCode && 
+        b.asset_issuer === publicKey
+      );
+      
+      if (nftBalance) {
+        console.log('NFT balance verified:', nftBalance.balance);
+        setStatusMsg('NFT created and verified successfully!');
+        toast.success('NFT created successfully!');
+        
+        // Reset form and navigate
+        setFormInput({
+          price: '',
+          name: '',
+          description: '',
+          assetCode: ''
+        });
+        setSelectedFile(null);
+        setPreviewUrl(null);
+        navigate('/');
+      } else {
+        throw new Error('NFT creation succeeded but verification failed');
+      }
+      
+    } catch (error) {
+      console.error('NFT creation error:', error);
+      
+      let errorMessage = 'Failed to create NFT: ';
+      
+      if (error.response?.data?.extras?.result_codes) {
+        const codes = error.response.data.extras.result_codes;
+        errorMessage += `${codes.transaction || 'Unknown error'}`;
+        
+        if (codes.operations) {
+          const opErrors = codes.operations.map((code, index) => {
+            switch (code) {
+              case 'op_malformed':
+                return `Operation ${index + 1} is malformed (check asset code format)`;
+              case 'op_no_trust':
+                return `Operation ${index + 1} requires a trustline`;
+              case 'op_underfunded':
+                return `Operation ${index + 1} lacks sufficient funds`;
+              default:
+                return `Operation ${index + 1} failed: ${code}`;
+            }
+          });
+          errorMessage += `\nOperation errors:\n${opErrors.join('\n')}`;
+        }
+      } else {
+        errorMessage += error.message || 'Unknown error occurred';
+      }
+      
+      setErrorMsg(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
+      setStatusMsg('');
     }
   }
-
+  
   return (
     <div className="create-nft-container">
       <Container className="create-nft-content">

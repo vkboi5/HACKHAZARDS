@@ -183,15 +183,99 @@ export function WalletConnectProvider({ children }) {
         throw new Error('Wallet not connected');
       }
 
-      const { signedTxXdr } = await kit.signTransaction(xdr, {
-        address: publicKey,
+      // Log the transaction details for debugging
+      console.log('Signing transaction:', {
+        xdr,
+        publicKey,
+        walletMethod,
         networkPassphrase: getNetworkConfig().networkPassphrase
       });
 
-      return { signedXDR: signedTxXdr };
+      // Check if we need to reconnect
+      if (!isConnected || !publicKey) {
+        console.log('WalletConnect session disconnected, attempting to reconnect...');
+        try {
+          await kit.openModal({
+            onWalletSelected: async (option) => {
+              try {
+                kit.setWallet(option.id);
+                const { address } = await kit.getAddress();
+                if (address) {
+                  setPublicKey(address);
+                  setIsConnected(true);
+                  setWalletMethod(option.id);
+                  localStorage.setItem('stellarPublicKey', address);
+                  localStorage.setItem('stellarWalletMethod', option.id);
+                }
+              } catch (err) {
+                console.error('Reconnection error:', err);
+                throw new Error('Failed to reconnect wallet');
+              }
+            },
+            onClosed: () => {
+              throw new Error('Wallet connection cancelled');
+            }
+          });
+        } catch (err) {
+          console.error('Reconnection attempt failed:', err);
+          throw new Error('Failed to reconnect wallet. Please try connecting again.');
+        }
+      }
+
+      // For LOBSTR wallet, we need to ensure the transaction is properly formatted
+      if (walletMethod === LOBSTR_ID) {
+        try {
+          // Parse the XDR to ensure it's valid
+          const transaction = StellarSdk.TransactionBuilder.fromXDR(
+            xdr,
+            getNetworkConfig().networkPassphrase
+          );
+
+          // Rebuild the transaction to ensure proper formatting
+          const rebuiltXdr = transaction.toXDR();
+          
+          const { signedTxXdr } = await kit.signTransaction(rebuiltXdr, {
+            networkPassphrase: getNetworkConfig().networkPassphrase
+          });
+
+          if (!signedTxXdr) {
+            throw new Error('No signed transaction received from wallet');
+          }
+
+          return { signedXDR: signedTxXdr };
+        } catch (parseError) {
+          console.error('Error parsing transaction:', parseError);
+          throw new Error('Invalid transaction format. Please try again.');
+        }
+      } else {
+        // For other wallets, use the standard signing process
+        const { signedTxXdr } = await kit.signTransaction(xdr, {
+          networkPassphrase: getNetworkConfig().networkPassphrase
+        });
+
+        if (!signedTxXdr) {
+          throw new Error('No signed transaction received from wallet');
+        }
+
+        return { signedXDR: signedTxXdr };
+      }
     } catch (err) {
       console.error('Transaction signing error:', err);
-      throw err;
+      // Provide more specific error messages
+      if (err.message.includes('User rejected')) {
+        throw new Error('Transaction signing was cancelled by the user.');
+      } else if (err.message.includes('Invalid transaction')) {
+        throw new Error('Invalid transaction format. Please try again.');
+      } else if (err.message.includes('connection key is missing') || err.message.includes('Failed to reconnect')) {
+        // Force reconnection if connection is lost
+        setIsConnected(false);
+        setPublicKey(null);
+        localStorage.removeItem('stellarPublicKey');
+        localStorage.removeItem('stellarWalletMethod');
+        throw new Error('Wallet connection lost. Please reconnect your wallet and try again.');
+      } else {
+        throw new Error(`Failed to sign transaction: ${err.message}`);
+      }
     }
   };
 
@@ -202,19 +286,50 @@ export function WalletConnectProvider({ children }) {
         throw new Error('Wallet not connected');
       }
 
-      const { signedTxXdr } = await kit.signTransaction(xdr, {
-        address: publicKey,
-        networkPassphrase: getNetworkConfig().networkPassphrase
-      });
+      // First sign the transaction
+      const { signedXDR } = await signTransaction(xdr);
+      
+      if (!signedXDR) {
+        throw new Error('Failed to sign transaction - no signed XDR returned');
+      }
 
-      // Submit the signed transaction
-      const transaction = StellarSdk.TransactionBuilder.fromXDR(
-        signedTxXdr,
-        getNetworkConfig().networkPassphrase
-      );
+      console.log('Successfully signed transaction, preparing to submit...');
 
-      const result = await server.submitTransaction(transaction);
-      return { hash: result.hash };
+      try {
+        // Parse the signed transaction
+        const transaction = StellarSdk.TransactionBuilder.fromXDR(
+          signedXDR,
+          getNetworkConfig().networkPassphrase
+        );
+
+        // Submit the transaction
+        console.log('Submitting transaction to the Stellar network...');
+        const result = await server.submitTransaction(transaction);
+        console.log('Transaction submitted successfully:', result.hash);
+        return { hash: result.hash };
+      } catch (submitError) {
+        console.error('Transaction submission error:', submitError);
+        
+        // Extract more detailed error information
+        if (submitError.response && submitError.response.data) {
+          const { extras } = submitError.response.data;
+          if (extras && extras.result_codes) {
+            const { transaction: txCode, operations } = extras.result_codes;
+            console.error('Transaction result code:', txCode);
+            console.error('Operation result codes:', operations);
+            
+            let errorMsg = `Transaction failed: ${txCode}`;
+            if (operations && operations.length > 0) {
+              errorMsg += ` - Operations: [${operations.join(', ')}]`;
+            }
+            
+            throw new Error(errorMsg);
+          }
+        }
+        
+        // If we couldn't extract detailed info, rethrow the original error
+        throw submitError;
+      }
     } catch (err) {
       console.error('Transaction signing and submission error:', err);
       throw err;
