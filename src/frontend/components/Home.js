@@ -14,6 +14,8 @@ import backgroundImg from './bgfinal.png';
 import ItemDetailsModal from './ItemDetailsModal';
 
 const PINATA_BASE_URL = 'https://api.pinata.cloud';
+const CACHE_KEY = 'nft_cache';
+const CACHE_EXPIRY_MS = 10 * 1000; // 10 seconds
 
 const HomePage = ({ marketplace, walletBalance }) => {
   const navigate = useNavigate();
@@ -113,10 +115,9 @@ const HomePage = ({ marketplace, walletBalance }) => {
 
   const optimizeImageUrl = useCallback((url) => {
     if (!url) return url;
-    // Add query parameters for image optimization
     const optimizedUrl = new URL(url);
-    optimizedUrl.searchParams.set('width', '300'); // Adjust size as needed
-    optimizedUrl.searchParams.set('quality', '80'); // Adjust quality as needed
+    optimizedUrl.searchParams.set('width', '300');
+    optimizedUrl.searchParams.set('quality', '80');
     return optimizedUrl.toString();
   }, []);
 
@@ -129,11 +130,56 @@ const HomePage = ({ marketplace, walletBalance }) => {
     });
   }, []);
 
-  const loadNFTs = async () => {
+  const getCachedNFTs = () => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (!cached) return null;
+
+      const { data, timestamp } = JSON.parse(cached);
+      const now = Date.now();
+      if (now - timestamp > CACHE_EXPIRY_MS) {
+        console.log('Cache expired, clearing...');
+        localStorage.removeItem(CACHE_KEY);
+        return null;
+      }
+      return data;
+    } catch (error) {
+      console.error('Error reading cache:', error);
+      return null;
+    }
+  };
+
+  const setCachedNFTs = (data) => {
+    try {
+      const cacheData = {
+        data,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+      console.log('Cache updated');
+    } catch (error) {
+      console.error('Error writing to cache:', error);
+    }
+  };
+
+  const loadNFTs = async (forceRefresh = false) => {
     try {
       setLoading(true);
       setLoadingState('loading');
 
+      // Check cache first unless forcing a refresh
+      if (!forceRefresh) {
+        const cachedNFTs = getCachedNFTs();
+        if (cachedNFTs) {
+          console.log('Using cached NFTs:', cachedNFTs.length);
+          setItems(cachedNFTs);
+          setLoadingState('loaded');
+          setLoading(false);
+          return;
+        }
+      }
+
+      console.log('Fetching fresh NFTs...');
       console.log('Environment variables:', {
         PINATA_API_KEY: process.env.REACT_APP_PINATA_API_KEY?.slice(0, 5) || 'undefined',
         PINATA_API_SECRET: process.env.REACT_APP_PINATA_API_SECRET?.slice(0, 5) || 'undefined',
@@ -217,7 +263,26 @@ const HomePage = ({ marketplace, walletBalance }) => {
                 console.log(`Fetching metadata for ${ipfsHash}...`);
 
                 const metadataResponse = await axios.get(metadataUrl, { timeout: 10000 });
-                const nftData = metadataResponse.data;
+                let nftData;
+                
+                // Check if the response is an image file
+                if (metadataResponse.headers['content-type']?.includes('image/')) {
+                  console.log(`Skipping image file at ${metadataUrl}`);
+                  continue;
+                }
+                
+                try {
+                  nftData = metadataResponse.data;
+                  // Ensure nftData is an object
+                  if (typeof nftData !== 'object' || nftData === null) {
+                    console.warn(`Invalid metadata format for ${ipfsHash}:`, nftData);
+                    continue;
+                  }
+                } catch (error) {
+                  console.error(`Failed to parse metadata for ${ipfsHash}:`, error);
+                  continue;
+                }
+
                 console.log(`Metadata for ${ipfsHash}:`, nftData);
 
                 if (!nftData.name || !nftData.image) {
@@ -233,7 +298,6 @@ const HomePage = ({ marketplace, walletBalance }) => {
                   imageUrl = `${process.env.REACT_APP_IPFS_GATEWAY}${imageUrl}`;
                 }
 
-                // Optimize and cache image URL
                 const optimizedImageUrl = optimizeImageUrl(imageUrl);
                 if (!imageCache[optimizedImageUrl]) {
                   try {
@@ -249,35 +313,120 @@ const HomePage = ({ marketplace, walletBalance }) => {
                 const itemLikes = await loadLikesFromPinata(itemId);
 
                 let accountId = nftData.creator;
-                let assetCode = nftData.assetCode || itemId.split('-')[1];
+                let assetCode = nftData.assetCode;
                 let isVerifiedOnStellar = false;
 
-                if (accountId && StellarSdk.StrKey.isValidEd25519PublicKey(accountId)) {
-                  try {
-                    const account = await stellarServer.loadAccount(accountId);
-                    const data = account.data_attr;
-                    if (data[`nft_${assetCode}`] && data[`nft_${assetCode}_issued`]) {
-                      isVerifiedOnStellar = true;
-                    }
-                  } catch (accountError) {
-                    console.warn(`Could not verify ${accountId} on Stellar: ${accountError.message}`);
+                // Try to extract asset code from metadata attributes if not present in root
+                if (!assetCode && nftData.attributes) {
+                  const assetCodeAttr = nftData.attributes.find(attr => attr.trait_type === 'Asset Code');
+                  if (assetCodeAttr) {
+                    assetCode = assetCodeAttr.value;
+                    console.log('Extracted asset code from metadata attributes:', assetCode);
                   }
                 }
 
-                nftItems.push({
-                  id: itemId,
-                  accountId: accountId || 'unknown',
-                  name: nftData.name,
-                  description: nftData.description || 'No description',
-                  image: optimizedImageUrl,
-                  creator: accountId || 'unknown',
-                  price: nftData.price || '0',
-                  assetCode: assetCode,
-                  likes: itemLikes,
-                  itemId: itemId,
-                  storageType: nftData.storage_type || 'ipfs',
-                  isVerifiedOnStellar,
-                });
+                // Skip verification if no valid account ID
+                if (!accountId || !StellarSdk.StrKey.isValidEd25519PublicKey(accountId)) {
+                  console.log(`Skipping verification for NFT with invalid or missing creator account ID: ${accountId || 'undefined'}`);
+                } else {
+                  try {
+                    const account = await stellarServer.loadAccount(accountId);
+                    const data = account.data_attr;
+                    console.log('All data attributes:', data);
+                    
+                    // If no asset code from metadata, try to find it in the data attributes
+                    if (!assetCode) {
+                      const dataKeys = Object.keys(data);
+                      // Look for any NFT-related keys
+                      const nftKeys = dataKeys.filter(key => key.startsWith('nft_'));
+                      
+                      if (nftKeys.length > 0) {
+                        // Extract the asset code from the first key, removing 'nft_' and any suffix
+                        assetCode = nftKeys[0].replace('nft_', '').split('_')[0];
+                        console.log('Extracted asset code from NFT key:', assetCode);
+                      } else {
+                        assetCode = 'UNKNOWN';
+                        console.log('No NFT keys found in data attributes');
+                      }
+                    }
+                    
+                    let verificationDetails = {
+                      hasMetadata: false,
+                      hasIssued: false,
+                      dataKeys: Object.keys(data),
+                      assetCodeUsed: assetCode
+                    };
+
+                    // Validate assetCode (must be 1-12 alphanumeric, not an IPFS hash)
+                    if (assetCode && /^[A-Z0-9]{1,12}$/.test(assetCode)) {
+                      // Check for both metadata and issued flags in both formats
+                      const metadataKey1 = `nft_${assetCode}`;
+                      const metadataKey2 = `nft_${assetCode}_metadata`;
+                      const issuedKey = `nft_${assetCode}_issued`;
+                      
+                      // Check if either metadata key exists
+                      const hasMetadataKey = Object.keys(data).includes(metadataKey1) || Object.keys(data).includes(metadataKey2);
+                      const hasIssuedKey = Object.keys(data).includes(issuedKey);
+                      
+                      verificationDetails.hasMetadata = hasMetadataKey;
+                      verificationDetails.hasIssued = hasIssuedKey;
+                      
+                      // Log the actual values for debugging
+                      console.log(`Checking metadata keys "${metadataKey1}" and "${metadataKey2}":`, hasMetadataKey ? 'exists' : 'missing');
+                      console.log(`Checking issued key "${issuedKey}":`, hasIssuedKey ? 'exists' : 'missing');
+                      
+                      if (hasMetadataKey) {
+                        if (hasIssuedKey) {
+                          isVerifiedOnStellar = true;
+                          console.log(`NFT ${assetCode} verified successfully with both metadata and issued flags`);
+                        } else {
+                          console.log(`NFT ${assetCode} has metadata but is not issued yet`);
+                          verificationDetails.status = 'pending_issuance';
+                        }
+                      } else {
+                        console.log(`NFT ${assetCode} verification failed - missing metadata`);
+                        verificationDetails.status = 'missing_metadata';
+                      }
+                    } else {
+                      console.warn(`Invalid assetCode for verification: ${assetCode}`);
+                      verificationDetails.error = 'Invalid assetCode (must be 1-12 alphanumeric characters)';
+                      verificationDetails.status = 'invalid_asset_code';
+                    }
+
+                    console.log(`Verification for ${accountId}, assetCode: ${assetCode}`, verificationDetails);
+
+                    nftItems.push({
+                      id: itemId,
+                      accountId: accountId || 'unknown',
+                      name: nftData.name,
+                      description: nftData.description || 'No description',
+                      image: optimizedImageUrl,
+                      creator: accountId || 'unknown',
+                      price: nftData.price || '0',
+                      assetCode,
+                      likes: itemLikes,
+                      itemId: itemId,
+                      storageType: nftData.storage_type || 'ipfs',
+                      isVerifiedOnStellar
+                    });
+                  } catch (accountError) {
+                    console.error(`Failed to verify ${accountId} for assetCode ${assetCode}:`, accountError.message);
+                    nftItems.push({
+                      id: itemId,
+                      accountId: accountId || 'unknown',
+                      name: nftData.name,
+                      description: nftData.description || 'No description',
+                      image: optimizedImageUrl,
+                      creator: accountId || 'unknown',
+                      price: nftData.price || '0',
+                      assetCode,
+                      likes: itemLikes,
+                      itemId: itemId,
+                      storageType: nftData.storage_type || 'ipfs',
+                      isVerifiedOnStellar: false
+                    });
+                  }
+                }
               } catch (itemError) {
                 console.error(`Error processing Pinata item ${item.ipfs_pin_hash}:`, itemError);
               }
@@ -382,7 +531,7 @@ const HomePage = ({ marketplace, walletBalance }) => {
                       likes: itemLikes,
                       itemId,
                       storageType: nftData.storage_type || 'ipfs',
-                      isVerifiedOnStellar: true,
+                      isVerifiedOnStellar: true
                     });
                   } catch (metadataError) {
                     console.error(`Error fetching metadata for ${assetCode}:`, metadataError);
@@ -415,6 +564,7 @@ const HomePage = ({ marketplace, walletBalance }) => {
       }
 
       setItems(filteredItems);
+      setCachedNFTs(filteredItems); // Update cache
       setLoadingState('loaded');
       setLoading(false);
 
@@ -499,7 +649,7 @@ const HomePage = ({ marketplace, walletBalance }) => {
     const handleStorageChange = (event) => {
       if (event.key === 'nftCreated') {
         console.log('New NFT created, refreshing list...');
-        loadNFTs();
+        loadNFTs(true); // Force refresh on new NFT creation
       }
     };
     window.addEventListener('storage', handleStorageChange);
@@ -541,7 +691,7 @@ const HomePage = ({ marketplace, walletBalance }) => {
   };
 
   const handleImageError = (e) => {
-    e.target.src = loaderGif; // Fallback to loader if image fails
+    e.target.src = loaderGif;
     console.error(`Failed to load image: ${e.target.src}`);
   };
 
@@ -603,16 +753,16 @@ const HomePage = ({ marketplace, walletBalance }) => {
                   .filter((item) => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
                   .map((item, idx) => (
                     <div key={idx} className="NftCard">
-                      <img 
-                        src={item.image} 
-                        alt={item.name} 
-                        className="NftCardImage" 
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                        className="NftCardImage"
                         loading="lazy"
                         onError={handleImageError}
-                        style={{ 
+                        style={{
                           backgroundImage: `url(${loaderGif})`,
                           backgroundSize: 'cover',
-                          backgroundPosition: 'center'
+                          backgroundPosition: 'center',
                         }}
                       />
                       <div className="NftCardContent">

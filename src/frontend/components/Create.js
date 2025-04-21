@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Container, Row, Col, Form, Button, Alert, Spinner } from 'react-bootstrap';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { useWalletConnect } from './WalletConnectProvider';
-import * as freighterApi from '@stellar/freighter-api';
 import axios from 'axios';
 import './Create.css';
 import { toast } from 'react-hot-toast';
@@ -263,7 +262,8 @@ const Create = () => {
       console.log('Metadata prepared:', {
         name: metadata.name,
         description: `${metadata.description?.substring(0, 20)}...`,
-        hasImage: !!metadata.image
+        hasImage: !!metadata.image,
+        assetCode: metadata.assetCode
       });
       
       const createLocalFallback = () => {
@@ -296,7 +296,8 @@ const Create = () => {
               app: 'Galerie',
               creator: metadata.creator?.substring(0, 10) || 'unknown',
               timestamp: new Date().toISOString(),
-              version: process.env.REACT_APP_VERSION || '1.0.0'
+              version: process.env.REACT_APP_VERSION || '1.0.0',
+              assetCode: metadata.assetCode
             }
           };
           
@@ -404,17 +405,43 @@ const Create = () => {
     }
   };
 
+  const validateAndNormalizeAssetCode = (rawAssetCode) => {
+    const assetCode = rawAssetCode.replace(/[^a-zA-Z0-9]/g, '').trim().toUpperCase();
+    if (!assetCode) {
+      throw new Error('Asset code is required');
+    }
+    if (assetCode.length < 1 || assetCode.length > 12) {
+      throw new Error('Asset code must be between 1 and 12 characters');
+    }
+    if (!/^[A-Z0-9]+$/.test(assetCode)) {
+      throw new Error('Asset code must contain only uppercase letters and numbers');
+    }
+    if (/XLM/i.test(assetCode)) {
+      throw new Error('Asset code cannot contain "XLM"');
+    }
+    if (assetCode.length <= 4) {
+      if (!/^[A-Z][A-Z0-9]{0,3}$/.test(assetCode)) {
+        throw new Error('Short asset codes (1-4 characters) must start with a letter');
+      }
+    } else {
+      if (!/^[A-Z][A-Z0-9]{4,11}$/.test(assetCode)) {
+        throw new Error('Long asset codes (5-12 characters) must start with a letter');
+      }
+    }
+    console.log('Asset code validated:', {
+      original: rawAssetCode,
+      normalized: assetCode,
+      length: assetCode.length,
+      type: assetCode.length <= 4 ? 'ALPHANUM4' : 'ALPHANUM12',
+    });
+    return assetCode;
+  };
+
   async function createNFT() {
     try {
       setIsLoading(true);
       setErrorMsg('');
       setStatusMsg('Starting NFT creation process...');
-
-      // Helper function to ensure proper Stellar amount formatting
-      const createPaymentAmount = (amount) => {
-        const str = parseFloat(amount).toFixed(7);
-        return str.replace(/\.?0+$/, '');
-      };
 
       // Validate form inputs
       const { name, description, price, assetCode } = formInput;
@@ -435,6 +462,7 @@ const Create = () => {
 
       // 2. Prepare and upload metadata
       setStatusMsg('Preparing NFT metadata...');
+      const validatedAssetCode = validateAndNormalizeAssetCode(assetCode);
       const metadata = {
         name,
         description,
@@ -442,10 +470,11 @@ const Create = () => {
         price,
         creator: publicKey,
         created_at: new Date().toISOString(),
+        assetCode: validatedAssetCode,
         attributes: [
           {
             trait_type: 'Asset Code',
-            value: assetCode,
+            value: validatedAssetCode,
           },
         ],
       };
@@ -473,42 +502,6 @@ const Create = () => {
       const server = new StellarSdk.Horizon.Server(process.env.REACT_APP_HORIZON_URL);
       const sourceAccount = await server.loadAccount(publicKey);
 
-      // Validate asset code
-      const validateAndNormalizeAssetCode = (rawAssetCode) => {
-        const assetCode = rawAssetCode.replace(/[^a-zA-Z0-9]/g, '').trim().toUpperCase();
-        if (!assetCode) {
-          throw new Error('Asset code is required');
-        }
-        if (assetCode.length < 1 || assetCode.length > 12) {
-          throw new Error('Asset code must be between 1 and 12 characters');
-        }
-        if (!/^[A-Z0-9]+$/.test(assetCode)) {
-          throw new Error('Asset code must contain only uppercase letters and numbers');
-        }
-        if (/XLM/i.test(assetCode)) {
-          throw new Error('Asset code cannot contain "XLM"');
-        }
-        if (assetCode.length <= 4) {
-          if (!/^[A-Z][A-Z0-9]{0,3}$/.test(assetCode)) {
-            throw new Error('Short asset codes (1-4 characters) must start with a letter');
-          }
-        } else {
-          if (!/^[A-Z][A-Z0-9]{4,11}$/.test(assetCode)) {
-            throw new Error('Long asset codes (5-12 characters) must start with a letter');
-          }
-        }
-        console.log('Asset code validated:', {
-          original: rawAssetCode,
-          normalized: assetCode,
-          length: assetCode.length,
-          type: assetCode.length <= 4 ? 'ALPHANUM4' : 'ALPHANUM12',
-        });
-        return assetCode;
-      };
-
-      const validatedAssetCode = validateAndNormalizeAssetCode(assetCode);
-      const nftAsset = new StellarSdk.Asset(validatedAssetCode, publicKey);
-
       // Check account balance
       const xlmBalance = sourceAccount.balances.find((b) => b.asset_type === 'native');
       if (!xlmBalance) {
@@ -522,7 +515,67 @@ const Create = () => {
         );
       }
 
-      // Helper function to submit a transaction
+      // Create NFT asset
+      const nftAsset = new StellarSdk.Asset(validatedAssetCode, publicKey);
+
+      // Build transaction operations (skip changeTrust for issuer)
+      const operations = [];
+
+      // Payment operation to issue the NFT
+      console.log('Adding payment operation');
+      operations.push(
+        StellarSdk.Operation.payment({
+          destination: publicKey,
+          asset: nftAsset,
+          amount: '1.0000000', // Fixed amount for NFT
+        })
+      );
+
+      // ManageData operation for metadata
+      if (metadataResult?.hash) {
+        console.log('Adding manageData operation for metadata');
+        const metadataValue = Buffer.from(metadataResult.hash);
+        if (metadataValue.length <= 64) {
+          operations.push(
+            StellarSdk.Operation.manageData({
+              name: `nft_${validatedAssetCode}`,
+              value: metadataValue,
+            })
+          );
+        } else {
+          console.error(`Metadata hash too long (${metadataValue.length} bytes) for assetCode ${validatedAssetCode}`);
+          throw new Error('IPFS metadata hash exceeds 64 bytes, cannot store on Stellar');
+        }
+      }
+
+      // ManageData operation for issued flag
+      console.log('Adding manageData operation for issued flag');
+      operations.push(
+        StellarSdk.Operation.manageData({
+          name: `nft_${validatedAssetCode}_issued`,
+          value: Buffer.from('true'),
+        })
+      );
+
+      // Log operations
+      console.log('Operations to be submitted:', operations.map((op, index) => ({
+        index,
+        type: op.type,
+        ...(op.type === 'payment'
+          ? {
+              asset: op.asset?.getCode(),
+              destination: op.destination,
+              amount: op.amount,
+            }
+          : op.type === 'manageData'
+          ? {
+              name: op.name,
+              value: op.value ? op.value.toString() : null,
+            }
+          : {}),
+      })));
+
+      // Submit transaction
       const submitTransaction = async (operations, description) => {
         try {
           const currentAccount = await server.loadAccount(publicKey);
@@ -603,54 +656,6 @@ const Create = () => {
         }
       };
 
-      // Build transaction operations (skip changeTrust for issuer)
-      const operations = [];
-
-      // Payment operation to issue the NFT
-      console.log('Adding payment operation');
-      operations.push(
-        StellarSdk.Operation.payment({
-          destination: publicKey,
-          asset: nftAsset,
-          amount: '1.0000000', // Fixed amount for NFT
-        })
-      );
-
-      // ManageData operation for metadata
-      if (metadataResult?.hash) {
-        console.log('Adding manageData operation');
-        const metadataValue = Buffer.from(metadataResult.hash);
-        if (metadataValue.length <= 64) {
-          operations.push(
-            StellarSdk.Operation.manageData({
-              name: `nft_${validatedAssetCode}_metadata`,
-              value: metadataValue,
-            })
-          );
-        } else {
-          console.warn('Metadata value exceeds 64 bytes, skipping metadata operation');
-        }
-      }
-
-      // Log operations
-      console.log('Operations to be submitted:', operations.map((op, index) => ({
-        index,
-        type: op.type,
-        ...(op.type === 'payment'
-          ? {
-              asset: op.asset?.getCode(),
-              destination: op.destination,
-              amount: op.amount,
-            }
-          : op.type === 'manageData'
-          ? {
-              name: op.name,
-              value: op.value ? op.value.toString() : null,
-            }
-          : {}),
-      })));
-
-      // Submit transaction
       console.log('Submitting NFT creation transaction');
       const result = await submitTransaction(operations, 'NFT creation');
       console.log('Transaction submitted successfully:', result);
@@ -677,6 +682,9 @@ const Create = () => {
         });
         setStatusMsg('NFT created and verified successfully!');
         toast.success('NFT created successfully!');
+
+        // Trigger refresh in Home.js
+        window.localStorage.setItem('nftCreated', Date.now().toString());
 
         // Reset form and navigate
         setFormInput({
@@ -741,6 +749,7 @@ const Create = () => {
                 <Form.Control
                   type="text"
                   placeholder="NFT Name"
+                  value={formInput.name}
                   onChange={e => setFormInput({ ...formInput, name: e.target.value })}
                 />
               </Form.Group>
@@ -751,6 +760,7 @@ const Create = () => {
                   as="textarea"
                   rows={3}
                   placeholder="NFT Description"
+                  value={formInput.description}
                   onChange={e => setFormInput({ ...formInput, description: e.target.value })}
                 />
               </Form.Group>
@@ -760,6 +770,7 @@ const Create = () => {
                 <Form.Control
                   type="number"
                   placeholder="NFT Price in XLM"
+                  value={formInput.price}
                   onChange={e => setFormInput({ ...formInput, price: e.target.value })}
                 />
               </Form.Group>
@@ -770,6 +781,7 @@ const Create = () => {
                   type="text"
                   placeholder="Asset Code (e.g., MYNFT)"
                   maxLength={12}
+                  value={formInput.assetCode}
                   onChange={e => setFormInput({ ...formInput, assetCode: e.target.value })}
                 />
               </Form.Group>
@@ -842,14 +854,14 @@ const Create = () => {
                     }}
                   />
                 ) : (
-                  <p>No image uploaded</p>
+                  <p>No image selected</p>
                 )}
               </div>
               <div className="preview-details">
                 <h3>{formInput.name || 'NFT Name'}</h3>
                 <p>{formInput.description || 'NFT Description'}</p>
-                <p className="price">{formInput.price ? `${formInput.price} XLM` : '0 XLM'}</p>
-                {formInput.assetCode && <p className="asset-code">Asset Code: {formInput.assetCode}</p>}
+                <p>Price: {formInput.price || '0'} XLM</p>
+                <p>Asset Code: {formInput.assetCode || 'N/A'}</p>
               </div>
             </div>
           </Col>

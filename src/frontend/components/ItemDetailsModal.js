@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
-import { FaHeart, FaShareAlt } from 'react-icons/fa';
+import { FaHeart, FaShareAlt, FaCreditCard } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { useWalletConnect } from './WalletConnectProvider';
+import MoonPayWidget from './MoonPayWidget';
 import './ItemDetailsModal.css';
 
 const ItemDetailsModal = ({ 
@@ -31,7 +32,7 @@ const ItemDetailsModal = ({
     
     onBid(bidAmount);
   };
-  
+
   const handleShare = (platform) => {
     const url = window.location.origin + '/item/' + item.itemId;
     const text = `Check out this amazing NFT: ${item.name} on Galerie NFT Marketplace!`;
@@ -101,8 +102,10 @@ const ItemDetailsModal = ({
               </div>
             )}
             
-            <div className="nft-actions">
-              <Form onSubmit={handleBidSubmit}>
+            <div className="payment-options">
+              <MoonPayWidget walletAddress={publicKey} />
+              
+              <Form onSubmit={handleBidSubmit} className="mt-3">
                 <Form.Group className="mb-3">
                   <Form.Label>Place a bid (XLM)</Form.Label>
                   <Form.Control
@@ -118,22 +121,22 @@ const ItemDetailsModal = ({
                   Place Bid
                 </Button>
               </Form>
-              
-              <div className="additional-actions">
-                <Button 
-                  variant="outline-primary" 
-                  className="action-button"
-                  onClick={() => handleShare('twitter')}
-                >
-                  <FaShareAlt /> Share
-                </Button>
-                <Button 
-                  variant="outline-danger" 
-                  className="action-button"
-                >
-                  <FaHeart /> {item.likes || 0}
-                </Button>
-              </div>
+            </div>
+            
+            <div className="additional-actions">
+              <Button 
+                variant="outline-primary" 
+                className="action-button"
+                onClick={() => handleShare('twitter')}
+              >
+                <FaShareAlt /> Share
+              </Button>
+              <Button 
+                variant="outline-danger" 
+                className="action-button"
+              >
+                <FaHeart /> {item.likes || 0}
+              </Button>
             </div>
           </div>
         </div>

@@ -13,33 +13,46 @@ import SecurityAlert from './SecurityAlert';
 import { WalletConnectProvider } from './WalletConnectProvider';
 import { WalletConnectConnection } from './WalletConnectConnection';
 import StellarSetup from './StellarSetup';
+import { MoonPayProvider } from '@moonpay/moonpay-react';
+
+// Validate MoonPay configuration
+const moonPayConfig = {
+  apiKey: process.env.REACT_APP_MOONPAY_PUBLISHABLE_KEY,
+  debug: process.env.NODE_ENV === 'development'
+};
+
+if (!moonPayConfig.apiKey) {
+  console.error('MoonPay API key is not configured. Please set REACT_APP_MOONPAY_PUBLISHABLE_KEY in your .env file');
+}
 
 function App() {
   return (
-    <WalletConnectProvider>
-      <BrowserRouter>
-        <div className="App">
-          <Navigation />
-          <SecurityAlert />
-          <div className="content-container">
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/create" element={<Create />} />
-              <Route path="/my-listed-items" element={<MyListedItems />} />
-              <Route path="/my-purchases" element={<MyPurchases />} />
-              <Route path="/stellar-setup" element={
-                <div className="section">
-                  <WalletConnectConnection />
-                  <div className="mt-4">
-                    <StellarSetup />
+    <MoonPayProvider {...moonPayConfig}>
+      <WalletConnectProvider>
+        <BrowserRouter>
+          <div className="App">
+            <Navigation />
+            <SecurityAlert />
+            <div className="content-container">
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/create" element={<Create />} />
+                <Route path="/my-listed-items" element={<MyListedItems />} />
+                <Route path="/my-purchases" element={<MyPurchases />} />
+                <Route path="/stellar-setup" element={
+                  <div className="section">
+                    <WalletConnectConnection />
+                    <div className="mt-4">
+                      <StellarSetup />
+                    </div>
                   </div>
-                </div>
-              } />
-            </Routes>
+                } />
+              </Routes>
+            </div>
           </div>
-        </div>
-      </BrowserRouter>
-    </WalletConnectProvider>
+        </BrowserRouter>
+      </WalletConnectProvider>
+    </MoonPayProvider>
   );
 }
 
