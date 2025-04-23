@@ -113,10 +113,9 @@ const HomePage = ({ marketplace, walletBalance }) => {
 
   const optimizeImageUrl = useCallback((url) => {
     if (!url) return url;
-    // Add query parameters for image optimization
     const optimizedUrl = new URL(url);
-    optimizedUrl.searchParams.set('width', '300'); // Adjust size as needed
-    optimizedUrl.searchParams.set('quality', '80'); // Adjust quality as needed
+    optimizedUrl.searchParams.set('width', '300');
+    optimizedUrl.searchParams.set('quality', '80');
     return optimizedUrl.toString();
   }, []);
 
@@ -200,8 +199,8 @@ const HomePage = ({ marketplace, walletBalance }) => {
                   pageOffset: (page - 1) * pageSize,
                 },
                 headers: {
-                  'pinata_api_key': pinataApiKey,
-                  'pinata_secret_api_key': pinataApiSecret,
+                  pinata_api_key: pinataApiKey,
+                  pinata_secret_api_key: pinataApiSecret,
                 },
                 timeout: 10000,
               }
@@ -233,7 +232,6 @@ const HomePage = ({ marketplace, walletBalance }) => {
                   imageUrl = `${process.env.REACT_APP_IPFS_GATEWAY}${imageUrl}`;
                 }
 
-                // Optimize and cache image URL
                 const optimizedImageUrl = optimizeImageUrl(imageUrl);
                 if (!imageCache[optimizedImageUrl]) {
                   try {
@@ -245,36 +243,55 @@ const HomePage = ({ marketplace, walletBalance }) => {
                   }
                 }
 
-                const itemId = `${nftData.creator || 'unknown'}-${nftData.assetCode || ipfsHash}`;
-                const itemLikes = await loadLikesFromPinata(itemId);
-
                 let accountId = nftData.creator;
-                let assetCode = nftData.assetCode || itemId.split('-')[1];
-                let isVerifiedOnStellar = false;
-
-                if (accountId && StellarSdk.StrKey.isValidEd25519PublicKey(accountId)) {
-                  try {
-                    const account = await stellarServer.loadAccount(accountId);
-                    const data = account.data_attr;
-                    if (data[`nft_${assetCode}`] && data[`nft_${assetCode}_issued`]) {
-                      isVerifiedOnStellar = true;
-                    }
-                  } catch (accountError) {
-                    console.warn(`Could not verify ${accountId} on Stellar: ${accountError.message}`);
-                  }
+                if (!accountId || !StellarSdk.StrKey.isValidEd25519PublicKey(accountId)) {
+                  console.warn(`Invalid creator public key for ${ipfsHash}: ${accountId || 'undefined'}, skipping NFT`);
+                  continue;
                 }
 
+                let assetCode = nftData.assetCode;
+                if (!assetCode && nftData.attributes) {
+                  const assetCodeAttr = nftData.attributes.find(attr => attr.trait_type === 'Asset Code');
+                  assetCode = assetCodeAttr?.value;
+                }
+                if (!assetCode) {
+                  assetCode = ipfsHash; // Fallback to IPFS hash if no asset code
+                  console.warn(`No asset code found for ${ipfsHash}, using IPFS hash: ${assetCode}`);
+                }
+
+                const itemId = `${accountId}-${assetCode}`;
+                const itemLikes = await loadLikesFromPinata(itemId);
+
+                let isVerifiedOnStellar = false;
+                try {
+                  const account = await stellarServer.loadAccount(accountId);
+                  const data = account.data_attr;
+                  if (data[`nft_${assetCode}`] && data[`nft_${assetCode}_issued`]) {
+                    isVerifiedOnStellar = true;
+                  }
+                } catch (accountError) {
+                  console.warn(`Could not verify ${accountId} on Stellar: ${accountError.message}`);
+                }
+
+                console.log('NFT metadata:', {
+                  ipfsHash: item.ipfs_pin_hash,
+                  name: nftData.name,
+                  price: nftData.price,
+                  priceType: typeof nftData.price,
+                  creator: nftData.creator,
+                  assetCode: assetCode,
+                });
                 nftItems.push({
                   id: itemId,
-                  accountId: accountId || 'unknown',
+                  accountId,
                   name: nftData.name,
                   description: nftData.description || 'No description',
                   image: optimizedImageUrl,
-                  creator: accountId || 'unknown',
+                  creator: accountId,
                   price: nftData.price || '0',
-                  assetCode: assetCode,
+                  assetCode,
                   likes: itemLikes,
-                  itemId: itemId,
+                  itemId,
                   storageType: nftData.storage_type || 'ipfs',
                   isVerifiedOnStellar,
                 });
@@ -325,7 +342,7 @@ const HomePage = ({ marketplace, walletBalance }) => {
           publicKey,
           'GAHDNV6A6NSOQM5AMU64NH2LOOAIK474NCGX2FXTXBKD5YUZLTZQKSPV',
           'GBH7EWCV6AN42WOFRXTTKPZLRWBVPN3NOC4VIYVXPTNIUYUPLEJ6ODRW',
-        ].filter(Boolean);
+        ].filter(accountId => accountId && StellarSdk.StrKey.isValidEd25519PublicKey(accountId));
 
         for (const accountId of accountsToCheck) {
           try {
@@ -347,7 +364,12 @@ const HomePage = ({ marketplace, walletBalance }) => {
                     const nftData = metadataResponse.data;
 
                     if (!nftData.name || !nftData.image) {
-                      console.warn(`Skipping invalid metadata for ${assetCode}`);
+                      console.warn(`Skipping invalid metadata for ${assetCode}: missing name or image`);
+                      continue;
+                    }
+
+                    if (!nftData.creator || !StellarSdk.StrKey.isValidEd25519PublicKey(nftData.creator)) {
+                      console.warn(`Invalid creator public key for ${assetCode}: ${nftData.creator || 'undefined'}, skipping NFT`);
                       continue;
                     }
 
@@ -476,6 +498,19 @@ const HomePage = ({ marketplace, walletBalance }) => {
       [itemId]: !userHasLiked,
     }));
 
+    if (!userHasLiked) {
+      setConfettiTrigger((prev) => ({
+        ...prev,
+        [itemId]: true,
+      }));
+      setTimeout(() => {
+        setConfettiTrigger((prev) => ({
+          ...prev,
+          [itemId]: false,
+        }));
+      }, 2000);
+    }
+
     await updateLikesOnPinata(itemId, newLikes);
   };
 
@@ -497,8 +532,8 @@ const HomePage = ({ marketplace, walletBalance }) => {
 
   useEffect(() => {
     const handleStorageChange = (event) => {
-      if (event.key === 'nftCreated') {
-        console.log('New NFT created, refreshing list...');
+      if (event.key === 'nftPurchased' || event.key === 'nftCreated') {
+        console.log('NFT event detected, refreshing list...');
         loadNFTs();
       }
     };
@@ -507,7 +542,7 @@ const HomePage = ({ marketplace, walletBalance }) => {
   }, []);
 
   const formatWalletAddress = (address) => {
-    if (!address || address === 'unknown') return 'Unknown';
+    if (!address || !StellarSdk.StrKey.isValidEd25519PublicKey(address)) return 'Unknown';
     return `${address.slice(0, 5)}***${address.slice(-4)}`;
   };
 
@@ -541,10 +576,156 @@ const HomePage = ({ marketplace, walletBalance }) => {
   };
 
   const handleImageError = (e) => {
-    e.target.src = loaderGif; // Fallback to loader if image fails
+    e.target.src = loaderGif;
     console.error(`Failed to load image: ${e.target.src}`);
   };
 
   return (
     <div className="home-container">
-     
+      <div className="gradient-section">
+        <div className="gradient-sphere sphere1"></div>
+        <div className="gradient-sphere sphere2"></div>
+        <div className="gradient-sphere sphere3"></div>
+
+        <div className="home-content">
+          <div className="home-text">
+            <h1 className="heading-line1">Connecting Artists</h1>
+            <h1 className="heading-line2">and Collectors through</h1>
+            <h1 className="heading-innovation">NFT INNOVATION</h1>
+            <p>Discover, collect, and trade exclusive NFTs effortlessly!</p>
+            <div className="home-buttons">
+              <button
+                className="explore-button"
+                onClick={() => window.scrollTo({ top: document.querySelector('.white-section').offsetTop, behavior: 'smooth' })}
+              >
+                Explore
+              </button>
+              <button className="create-button" onClick={handleCreateClick}>
+                Create
+              </button>
+            </div>
+          </div>
+          <div className="hero-illustration"></div>
+        </div>
+        <div className="curved-line"></div>
+      </div>
+
+      <div className="white-section">
+        <div className="container">
+          <h2 className="text-center my-4">Featured NFTs</h2>
+          <div className="row">
+            <div className="col-12">
+              <input
+                type="text"
+                className="form-control mb-4"
+                placeholder="Search for NFTs..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="d-flex justify-content-center">
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+            </div>
+          ) : (
+            <div className="NftCardContainer">
+              {items.length > 0 ? (
+                items
+                  .filter((item) => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map((item, idx) => (
+                    <div key={idx} className="NftCard">
+                      <Confetti active={confettiTrigger[item.itemId] || false} config={{ spread: 360, elementCount: 100 }} />
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                        className="NftCardImage"
+                        loading="lazy"
+                        onError={handleImageError}
+                        style={{
+                          backgroundImage: `url(${loaderGif})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        }}
+                      />
+                      <div className="NftCardContent">
+                        <h3 className="NftCardTitle">{item.name}</h3>
+                        <p className="NftCardDescription">{item.description}</p>
+                        <div className="account-badge">
+                          {item.accountId ===
+                            'GAHDNV6A6NSOQM5AMU64NH2LOOAIK474NCGX2FXTXBKD5YUZLTZQKSPV' && (
+                            <span className="badge bg-info">
+                              <small>Featured Collection</small>
+                            </span>
+                          )}
+                          {item.accountId === publicKey && (
+                            <span className="badge bg-success">
+                              <small>Your Collection</small>
+                            </span>
+                          )}
+                          <span className="badge bg-light text-dark">
+                            <small>Owner: {formatWalletAddress(item.accountId)}</small>
+                          </span>
+                          {!item.isVerifiedOnStellar && (
+                            <span className="badge bg-warning">
+                              <small>Not Verified on Stellar</small>
+                            </span>
+                          )}
+                        </div>
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <span className="NftCardPrice">{item.price || '0'} XLM</span>
+                          <div>
+                            <button
+                              className="btn btn-outline-danger btn-sm me-2"
+                              onClick={() => handleLike(item.itemId)}
+                            >
+                              <FaHeart style={{ color: likedItems[item.itemId] ? '#dc3545' : 'inherit' }} />{' '}
+                              {likes[item.itemId] || 0}
+                            </button>
+                            <button
+                              className="btn btn-primary btn-sm"
+                              onClick={() => handleViewDetails(item)}
+                            >
+                              View
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+              ) : (
+                <div className="text-center my-5">
+                  <h4>No NFTs Found</h4>
+                  <p>Be the first to create an NFT marketplace listing!</p>
+                  <button className="btn btn-primary" onClick={handleCreateClick}>
+                    Create NFT
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {selectedItem && (
+        <ItemDetailsModal
+          show={showModal}
+          onHide={() => {
+            setShowModal(false);
+            loadNFTs(); // Refresh NFT list after modal closes
+          }}
+          item={selectedItem}
+          onBid={handlePlaceBid}
+          bidAmount={bidAmount}
+          setBidAmount={setBidAmount}
+        />
+      )}
+      <ToastContainer />
+    </div>
+  );
+};
+
+export default HomePage;
