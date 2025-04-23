@@ -24,24 +24,26 @@ export default function MyPurchases() {
         process.env.REACT_APP_HORIZON_URL || 'https://horizon-testnet.stellar.org'
       );
       
-      // Get the account's transactions
+      // Load account
       const account = await stellarServer.loadAccount(publicKey);
       
       // Filter for NFT purchase transactions
       const purchaseTransactions = [];
       
-      // Look for transactions where the account received an NFT
+      // Look for non-native assets (NFTs) with non-zero balance
       for (const balance of account.balances) {
-        if (balance.asset_type !== 'native' && balance.balance !== '0') {
-          // This is a non-native asset (likely an NFT)
+        if (balance.asset_type !== 'native' && parseFloat(balance.balance) > 0) {
           try {
             // Get asset details
             const asset = new StellarSdk.Asset(balance.asset_code, balance.asset_issuer);
             
-            // Get the asset's metadata if available
-            const data = account.data_attr;
-            if (data && data[`nft_metadata_${balance.asset_code}`]) {
-              const metadataUrl = Buffer.from(data[`nft_metadata_${balance.asset_code}`], 'base64').toString('utf-8');
+            // Get the asset's metadata
+            const issuerAccount = await stellarServer.loadAccount(balance.asset_issuer);
+            const data = issuerAccount.data;
+            const metadataKey = `nft_${balance.asset_code}_metadata`;
+            if (data[metadataKey]) {
+              const metadataHash = Buffer.from(data[metadataKey], 'base64').toString();
+              const metadataUrl = `${process.env.REACT_APP_IPFS_GATEWAY}${metadataHash}`;
               const response = await axios.get(metadataUrl);
               const metadata = response.data;
               
@@ -50,7 +52,7 @@ export default function MyPurchases() {
                 name: metadata.name || balance.asset_code,
                 description: metadata.description || 'No description available',
                 image: metadata.image || 'https://via.placeholder.com/300',
-                price: '0', // Price implementation will come in next phase
+                price: metadata.price || '0',
                 balance: balance.balance
               });
             } else {
@@ -94,7 +96,7 @@ export default function MyPurchases() {
 
   return (
     <div>
-      {purchases.length > 0 ?
+      {purchases.length > 0 ? (
         <div className="gridpurchase">
           {purchases.map((item, idx) => (
             <div key={idx} className="card-custom-purchase">
@@ -106,11 +108,11 @@ export default function MyPurchases() {
             </div>
           ))}
         </div>
-        : (
-          <main className="section-title-no-purchase">
-            <h2>No purchases</h2>
-          </main>
-        )}
+      ) : (
+        <main className="section-title-no-purchase">
+          <h2>No purchases</h2>
+        </main>
+      )}
     </div>
   );
 }

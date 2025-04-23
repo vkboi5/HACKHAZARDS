@@ -3,6 +3,8 @@ import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import { FaHeart, FaShareAlt } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { useWalletConnect } from './WalletConnectProvider';
+import * as StellarSdk from '@stellar/stellar-sdk';
+import MarketplaceService from './MarketplaceService';
 import './ItemDetailsModal.css';
 
 const ItemDetailsModal = ({ 
@@ -15,8 +17,83 @@ const ItemDetailsModal = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const { publicKey, isConnected } = useWalletConnect();
-  
+  const { publicKey, isConnected, signAndSubmitTransaction } = useWalletConnect();
+
+  // Consistent price validation
+  const validatePrice = (price) => {
+    if (!price || isNaN(parseFloat(price)) || parseFloat(price) <= 0) {
+      console.error(`Invalid price: ${price || 'undefined'} (must be a positive number)`);
+      return false;
+    }
+    let formattedPrice = parseFloat(price).toFixed(7).replace(/\.?0+$/, '');
+    if (!/^\d+(\.\d{1,7})?$/.test(formattedPrice)) {
+      console.error(`Price has too many decimal places: ${formattedPrice} (max 7)`);
+      return false;
+    }
+    console.log('Validated price in ItemDetailsModal:', { input: price, output: formattedPrice });
+    return formattedPrice;
+  };
+
+  const handleBuy = async () => {
+    if (!isConnected || !publicKey) {
+      toast.error('Please connect your Stellar wallet first!', { position: 'top-center' });
+      return;
+    }
+
+    const validatedPrice = validatePrice(item.price);
+    if (!validatedPrice) {
+      toast.error(`Invalid price: ${item.price || 'undefined'} (must be a positive number with at most 7 decimal places)`, { position: 'top-center' });
+      return;
+    }
+
+    if (!item.assetCode || !/^[a-zA-Z0-9]{1,12}$/.test(item.assetCode)) {
+      toast.error(`Invalid asset code: ${item.assetCode || 'undefined'}`, { position: 'top-center' });
+      return;
+    }
+
+    if (!item.creator || !StellarSdk.StrKey.isValidEd25519PublicKey(item.creator)) {
+      toast.error(`Invalid creator public key: ${item.creator || 'undefined'}`, { position: 'top-center' });
+      return;
+    }
+
+    console.log('ItemDetailsModal buyNFT params:', {
+      assetCode: item.assetCode,
+      publicKey,
+      price: validatedPrice,
+      creator: item.creator,
+    });
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      console.log('Before buyNFT:', {
+        assetCode: item.assetCode,
+        price: validatedPrice,
+        priceType: typeof validatedPrice,
+        priceValue: JSON.stringify(validatedPrice),
+        creator: item.creator,
+      });
+      await MarketplaceService.buyNFT(
+        item.assetCode,
+        publicKey,
+        validatedPrice,
+        item.creator,
+        signAndSubmitTransaction
+      );
+      toast.success(`Successfully purchased ${item.name} for ${validatedPrice} XLM!`, {
+        position: 'top-center',
+      });
+      onHide(); // Close modal after purchase
+    } catch (error) {
+      const errorMessage = `Failed to buy NFT: ${error.message}`;
+      setError(errorMessage);
+      toast.error(errorMessage, { position: 'top-center' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleBidSubmit = (e) => {
     e.preventDefault();
     if (!isConnected) {
@@ -79,7 +156,7 @@ const ItemDetailsModal = ({
             
             <div className="nft-details-row">
               <span className="detail-label">Creator:</span>
-              <span className="detail-value">{item.seller ? item.seller.slice(0, 6) + '...' + item.seller.slice(-4) : 'Unknown'}</span>
+              <span className="detail-value">{item.creator ? item.creator.slice(0, 6) + '...' + item.creator.slice(-4) : 'Unknown'}</span>
             </div>
             
             <div className="nft-details-row">
@@ -101,7 +178,22 @@ const ItemDetailsModal = ({
               </div>
             )}
             
+            {error && (
+              <div className="alert alert-danger mt-3">
+                {error}
+              </div>
+            )}
+            
             <div className="nft-actions">
+              <Button
+                variant="success"
+                onClick={handleBuy}
+                disabled={isLoading || !isConnected || !validatePrice(item.price) || !item.assetCode || !item.creator || !StellarSdk.StrKey.isValidEd25519PublicKey(item.creator)}
+                className="buy-button mb-3"
+              >
+                {isLoading ? 'Buying...' : `Buy for ${item.price} XLM`}
+              </Button>
+              
               <Form onSubmit={handleBidSubmit}>
                 <Form.Group className="mb-3">
                   <Form.Label>Place a bid (XLM)</Form.Label>
@@ -142,4 +234,4 @@ const ItemDetailsModal = ({
   );
 };
 
-export default ItemDetailsModal; 
+export default ItemDetailsModal;
