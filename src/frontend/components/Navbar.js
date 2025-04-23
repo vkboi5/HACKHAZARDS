@@ -7,11 +7,11 @@ import logo from '../../assets/images/logos/logo.png';
 import { FaWallet, FaSignOutAlt, FaExternalLinkAlt } from 'react-icons/fa';
 
 const Navigation = () => {
-    const { 
-        publicKey, 
-        isConnected, 
-        connectWallet, 
-        disconnectWallet, 
+    const {
+        publicKey,
+        isConnected,
+        connectWallet,
+        disconnectWallet,
         balanceInXLM,
         walletMethod
     } = useStellarWallet();
