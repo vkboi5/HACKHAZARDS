@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Container, Row, Col, Form, Button, Alert, Spinner } from 'react-bootstrap';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { useWalletConnect } from './WalletConnectProvider';
-import * as freighterApi from '@stellar/freighter-api';
 import axios from 'axios';
 import './Create.css';
 import { toast } from 'react-hot-toast';
@@ -18,7 +17,6 @@ const Create = () => {
     assetCode: '',
   });
   const [selectedFile, setSelectedFile] = useState(null);
-  const [fileUrl, setFileUrl] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -27,20 +25,33 @@ const Create = () => {
     apiKey: process.env.REACT_APP_PINATA_API_KEY,
     apiSecret: process.env.REACT_APP_PINATA_API_SECRET,
     gateway: process.env.REACT_APP_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/',
-    timeout: 60000 // 60 seconds timeout
+    timeout: 60000,
   });
   const [envVarsLoaded, setEnvVarsLoaded] = useState(false);
+
+  // Validate price
+  const validatePrice = (price) => {
+    if (!price || isNaN(parseFloat(price)) || parseFloat(price) <= 0) {
+      throw new Error(`Invalid price: ${price || 'undefined'} (must be a positive number)`);
+    }
+    let formattedPrice = parseFloat(price).toFixed(7).replace(/\.?0+$/, '');
+    if (!/^\d+(\.\d{1,7})?$/.test(formattedPrice)) {
+      throw new Error(`Price has too many decimal places: ${formattedPrice} (max 7)`);
+    }
+    console.log('Validated price:', { input: price, output: formattedPrice });
+    return formattedPrice;
+  };
 
   // Verify environment variables on component mount
   useEffect(() => {
     const missingVars = [];
-    
     if (!process.env.REACT_APP_PINATA_API_KEY) missingVars.push('REACT_APP_PINATA_API_KEY');
     if (!process.env.REACT_APP_PINATA_API_SECRET) missingVars.push('REACT_APP_PINATA_API_SECRET');
     if (!process.env.REACT_APP_IPFS_GATEWAY) missingVars.push('REACT_APP_IPFS_GATEWAY');
     if (!process.env.REACT_APP_STELLAR_NETWORK) missingVars.push('REACT_APP_STELLAR_NETWORK');
     if (!process.env.REACT_APP_HORIZON_URL) missingVars.push('REACT_APP_HORIZON_URL');
-    
+    if (!process.env.REACT_APP_ESCROW_ACCOUNT) missingVars.push('REACT_APP_ESCROW_ACCOUNT');
+
     if (missingVars.length > 0) {
       const errorMessage = `Missing environment variables: ${missingVars.join(', ')}. Please check your .env file.`;
       console.error(errorMessage);
@@ -67,13 +78,13 @@ const Create = () => {
   // Check Pinata credentials
   useEffect(() => {
     if (!envVarsLoaded) return;
-    
+
     if (!pinataConfig.apiKey || !pinataConfig.apiSecret) {
       console.warn('Pinata API credentials not found in environment variables.');
       setErrorMsg('Warning: IPFS configuration missing.');
       return;
     }
-    
+
     if (pinataConfig.apiKey === 'your-pinata-api-key' || 
         pinataConfig.apiSecret === 'your-pinata-api-secret') {
       setErrorMsg(
@@ -88,17 +99,17 @@ const Create = () => {
       setErrorMsg('Warning: Invalid Pinata API keys.');
       return;
     }
-    
+
     const validatePinataCredentials = async () => {
       try {
         setStatusMsg('Verifying Pinata credentials...');
         const response = await axios.get('https://api.pinata.cloud/data/testAuthentication', {
           headers: {
             'pinata_api_key': pinataConfig.apiKey,
-            'pinata_secret_api_key': pinataConfig.apiSecret
-          }
+            'pinata_secret_api_key': pinataConfig.apiSecret,
+          },
         });
-        
+
         if (response.status === 200) {
           console.log('Pinata credentials validated successfully');
           setStatusMsg('Pinata connection established');
@@ -109,7 +120,7 @@ const Create = () => {
         setErrorMsg('Error: Invalid Pinata credentials.');
       }
     };
-    
+
     validatePinataCredentials();
   }, [envVarsLoaded]);
 
@@ -127,15 +138,15 @@ const Create = () => {
     try {
       setStatusMsg('Preparing image upload...');
       console.log(`Image file: ${file.name}, type: ${file.type}, size: ${file.size / 1024} KB`);
-      
+
       const localUrl = URL.createObjectURL(file);
-      
+
       if (!pinataConfig.apiKey || !pinataConfig.apiSecret) {
         setStatusMsg('IPFS configuration missing. Using local storage.');
         console.warn('Pinata credentials missing.');
         return { url: localUrl, source: 'local', success: false };
       }
-      
+
       const maxFileSizeMB = 100;
       const fileSizeMB = file.size / (1024 * 1024);
       if (fileSizeMB > maxFileSizeMB) {
@@ -144,57 +155,41 @@ const Create = () => {
         setStatusMsg(`${errorMsg} Using local storage.`);
         return { url: localUrl, source: 'local', success: false };
       }
-      
+
       let retryCount = 0;
       let lastError = null;
-      
+
       while (retryCount <= maxRetries) {
         try {
           setStatusMsg(`Uploading image to IPFS (${retryCount > 0 ? `retry ${retryCount}/${maxRetries}` : 'first attempt'})...`);
           console.log(`Attempting Pinata upload (attempt ${retryCount + 1})...`);
-          
+
           const formData = new FormData();
           formData.append('file', file);
-          
-          const metadata = JSON.stringify({
-            name: file.name,
-            keyvalues: {
-              app: 'Galerie',
-              timestamp: new Date().toISOString(),
-              version: process.env.REACT_APP_VERSION || '1.0.0'
-            }
-          });
-          formData.append('pinataMetadata', metadata);
-          
+
           const pinataOptions = JSON.stringify({
             cidVersion: 1,
-            wrapWithDirectory: false
+            wrapWithDirectory: false,
           });
           formData.append('pinataOptions', pinataOptions);
-          
-          console.log('Request headers:', {
-            'Content-Type': 'multipart/form-data',
-            'pinata_api_key': `${pinataConfig.apiKey.substring(0, 3)}...`,
-            'pinata_secret_api_key': '*** REDACTED ***'
-          });
-          
+
           const response = await axios.post(
-            'https://api.pinata.cloud/pinning/pinFileToIPFS', 
-            formData, 
+            'https://api.pinata.cloud/pinning/pinFileToIPFS',
+            formData,
             {
               headers: {
                 'Content-Type': 'multipart/form-data',
                 'pinata_api_key': pinataConfig.apiKey,
-                'pinata_secret_api_key': pinataConfig.apiSecret
+                'pinata_secret_api_key': pinataConfig.apiSecret,
               },
               maxBodyLength: Infinity,
               maxContentLength: Infinity,
-              timeout: pinataConfig.timeout
+              timeout: pinataConfig.timeout,
             }
           );
-          
+
           console.log('Pinata upload response status:', response.status);
-          
+
           if (response.data && response.data.IpfsHash) {
             const ipfsUrl = `${pinataConfig.gateway}${response.data.IpfsHash}`;
             console.log('Uploaded to IPFS:', ipfsUrl);
@@ -207,7 +202,7 @@ const Create = () => {
           lastError = error;
           let errorMessage = 'Failed to upload to Pinata';
           let shouldRetry = true;
-          
+
           if (error.code === 'ECONNABORTED') {
             errorMessage = 'Pinata upload timed out.';
           } else if (error.response) {
@@ -227,19 +222,19 @@ const Create = () => {
           } else if (error.request) {
             errorMessage = 'No response from Pinata servers.';
           }
-          
+
           console.error(`${errorMessage} (Attempt ${retryCount + 1}/${maxRetries + 1})`, error);
-          
+
           if (!shouldRetry || retryCount >= maxRetries) {
             break;
           }
-          
+
           retryCount++;
           setStatusMsg(`${errorMessage} Retrying... (${retryCount}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
       }
-      
+
       const finalErrorMsg = `Failed to upload to IPFS after ${maxRetries + 1} attempts.`;
       console.error(finalErrorMsg, lastError);
       setStatusMsg(finalErrorMsg);
@@ -248,11 +243,11 @@ const Create = () => {
       const errorMsg = `Error in uploadImage: ${error.message}`;
       console.error(errorMsg, error);
       setStatusMsg('Error processing image. Using local storage.');
-      return { 
-        url: URL.createObjectURL(file), 
-        source: 'local', 
-        success: false, 
-        error: error.message 
+      return {
+        url: URL.createObjectURL(file),
+        source: 'local',
+        success: false,
+        error: error.message,
       };
     }
   };
@@ -263,14 +258,15 @@ const Create = () => {
       console.log('Metadata prepared:', {
         name: metadata.name,
         description: `${metadata.description?.substring(0, 20)}...`,
-        hasImage: !!metadata.image
+        hasImage: !!metadata.image,
+        assetCode: metadata.assetCode,
       });
-      
+
       const createLocalFallback = () => {
         const blob = new Blob([JSON.stringify(metadata)], { type: 'application/json' });
         return URL.createObjectURL(blob);
       };
-      
+
       if (!pinataConfig.apiKey || !pinataConfig.apiSecret) {
         setStatusMsg('IPFS configuration missing.');
         console.warn('Pinata credentials missing.');
@@ -281,56 +277,51 @@ const Create = () => {
         }
         throw new Error('Pinata API credentials not configured.');
       }
-      
+
       let retryCount = 0;
       let lastError = null;
-      
+
       while (retryCount <= maxRetries) {
         try {
           setStatusMsg(`Uploading metadata to IPFS (${retryCount > 0 ? `retry ${retryCount}/${maxRetries}` : 'first attempt'})...`);
           console.log(`Attempting metadata upload (attempt ${retryCount + 1})...`);
-          
+
           const pinataMetadata = {
             name: `NFT Metadata - ${metadata.name}`,
             keyvalues: {
               app: 'Galerie',
               creator: metadata.creator?.substring(0, 10) || 'unknown',
               timestamp: new Date().toISOString(),
-              version: process.env.REACT_APP_VERSION || '1.0.0'
-            }
+              version: process.env.REACT_APP_VERSION || '1.0.0',
+              assetCode: metadata.assetCode,
+            },
           };
-          
+
           const pinataOptions = {
-            cidVersion: 1
+            cidVersion: 1,
           };
-          
+
           const data = {
             pinataMetadata,
             pinataOptions,
-            pinataContent: metadata
+            pinataContent: metadata,
           };
-          
-          console.log('Metadata request:', {
-            url: 'https://api.pinata.cloud/pinning/pinJSONToIPFS',
-            contentSize: JSON.stringify(metadata).length,
-            pinataMetadata
-          });
-          
+
           const response = await axios.post(
-            'https://api.pinata.cloud/pinning/pinJSONToIPFS', 
+            'https://api.pinata.cloud/pinning/pinJSONToIPFS',
             data,
             {
               headers: {
                 'Content-Type': 'application/json',
                 'pinata_api_key': pinataConfig.apiKey,
-                'pinata_secret_api_key': pinataConfig.apiSecret
+                'pinata_secret_api_key': pinataConfig.apiSecret,
               },
-              timeout: pinataConfig.timeout
+              timeout: pinataConfig.timeout,
             }
           );
-          
+
           console.log('Pinata metadata upload response status:', response.status);
-          
+
           if (response.data && response.data.IpfsHash) {
             const metadataUrl = `${pinataConfig.gateway}${response.data.IpfsHash}`;
             console.log('Metadata uploaded to IPFS:', metadataUrl);
@@ -343,7 +334,7 @@ const Create = () => {
           lastError = error;
           let errorMessage = 'Failed to upload metadata to Pinata';
           let shouldRetry = true;
-          
+
           if (error.code === 'ECONNABORTED') {
             errorMessage = 'Metadata upload timed out.';
           } else if (error.response) {
@@ -363,43 +354,43 @@ const Create = () => {
           } else if (error.request) {
             errorMessage = 'No response from Pinata servers for metadata.';
           }
-          
+
           console.error(`${errorMessage} (Attempt ${retryCount + 1}/${maxRetries + 1})`, error);
-          
+
           if (!shouldRetry || retryCount >= maxRetries) {
             break;
           }
-          
+
           retryCount++;
           setStatusMsg(`${errorMessage} Retrying metadata upload... (${retryCount}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
       }
-      
+
       const finalErrorMsg = `Failed to upload metadata to IPFS after ${maxRetries + 1} attempts.`;
       console.error(finalErrorMsg, lastError);
-      
+
       if (process.env.NODE_ENV === 'development') {
         console.warn('Using local storage for metadata in development mode');
         const localUrl = createLocalFallback();
         setStatusMsg(`${finalErrorMsg} Using temporary storage.`);
         return { url: localUrl, source: 'local', success: false, error: lastError?.message };
       }
-      
+
       setStatusMsg(`${finalErrorMsg} Please try again later.`);
       throw new Error(`${finalErrorMsg}`);
     } catch (error) {
       const errorMsg = `Error in uploadMetadata: ${error.message}`;
       console.error(errorMsg, error);
       setStatusMsg('Failed to upload metadata.');
-      
+
       if (process.env.NODE_ENV === 'development') {
         console.warn('Using local fallback for metadata');
         const blob = new Blob([JSON.stringify(metadata)], { type: 'application/json' });
         const localUrl = URL.createObjectURL(blob);
         return { url: localUrl, source: 'local', success: false, error: error.message };
       }
-      
+
       throw error;
     }
   };
@@ -410,12 +401,6 @@ const Create = () => {
       setErrorMsg('');
       setStatusMsg('Starting NFT creation process...');
 
-      // Helper function to ensure proper Stellar amount formatting
-      const createPaymentAmount = (amount) => {
-        const str = parseFloat(amount).toFixed(7);
-        return str.replace(/\.?0+$/, '');
-      };
-
       // Validate form inputs
       const { name, description, price, assetCode } = formInput;
       if (!name || !description || !price || !assetCode || !selectedFile) {
@@ -425,55 +410,7 @@ const Create = () => {
         throw new Error('Please connect your Stellar wallet');
       }
 
-      // 1. Upload image to IPFS
-      setStatusMsg('Uploading image to IPFS...');
-      const imageResult = await uploadImage(selectedFile);
-      if (!imageResult.success) {
-        throw new Error('Failed to upload image to IPFS');
-      }
-      console.log('Image uploaded as ipfs:', imageResult.url);
-
-      // 2. Prepare and upload metadata
-      setStatusMsg('Preparing NFT metadata...');
-      const metadata = {
-        name,
-        description,
-        image: imageResult.url,
-        price,
-        creator: publicKey,
-        created_at: new Date().toISOString(),
-        attributes: [
-          {
-            trait_type: 'Asset Code',
-            value: assetCode,
-          },
-        ],
-      };
-      console.log('Metadata being prepared:', metadata);
-
-      const metadataResult = await uploadMetadata(metadata);
-      if (!metadataResult.success) {
-        throw new Error('Failed to upload metadata to IPFS');
-      }
-      console.log('Metadata uploaded as ipfs:', metadataResult.url);
-
-      // 3. Create the NFT using Stellar
-      setStatusMsg('Creating NFT on Stellar...');
-
-      const networkConfig = {
-        network: process.env.REACT_APP_STELLAR_NETWORK || 'TESTNET',
-        passphrase:
-          process.env.REACT_APP_STELLAR_NETWORK === 'TESTNET'
-            ? StellarSdk.Networks.TESTNET
-            : StellarSdk.Networks.PUBLIC,
-      };
-      console.log('Using network:', networkConfig.network);
-
-      // Initialize Stellar server
-      const server = new StellarSdk.Horizon.Server(process.env.REACT_APP_HORIZON_URL);
-      const sourceAccount = await server.loadAccount(publicKey);
-
-      // Validate asset code
+      // Validate and normalize asset code
       const validateAndNormalizeAssetCode = (rawAssetCode) => {
         const assetCode = rawAssetCode.replace(/[^a-zA-Z0-9]/g, '').trim().toUpperCase();
         if (!assetCode) {
@@ -507,7 +444,58 @@ const Create = () => {
       };
 
       const validatedAssetCode = validateAndNormalizeAssetCode(assetCode);
-      const nftAsset = new StellarSdk.Asset(validatedAssetCode, publicKey);
+
+      // Validate and format price
+      const validatedPrice = validatePrice(price);
+
+      // Upload image to IPFS
+      setStatusMsg('Uploading image to IPFS...');
+      const imageResult = await uploadImage(selectedFile);
+      if (!imageResult.success) {
+        throw new Error('Failed to upload image to IPFS');
+      }
+      console.log('Image uploaded as ipfs:', imageResult.url);
+
+      // Prepare and upload metadata
+      setStatusMsg('Preparing NFT metadata...');
+      const metadata = {
+        name,
+        description,
+        image: imageResult.url,
+        price: validatedPrice,
+        creator: publicKey,
+        assetCode: validatedAssetCode,
+        created_at: new Date().toISOString(),
+        attributes: [
+          {
+            trait_type: 'Asset Code',
+            value: validatedAssetCode,
+          },
+        ],
+      };
+      console.log('Metadata being prepared:', metadata);
+
+      const metadataResult = await uploadMetadata(metadata);
+      if (!metadataResult.success) {
+        throw new Error('Failed to upload metadata to IPFS');
+      }
+      console.log('Metadata uploaded as ipfs:', metadataResult.url);
+
+      // Create the NFT using Stellar
+      setStatusMsg('Creating NFT on Stellar...');
+
+      const networkConfig = {
+        network: process.env.REACT_APP_STELLAR_NETWORK || 'TESTNET',
+        passphrase:
+          process.env.REACT_APP_STELLAR_NETWORK === 'TESTNET'
+            ? StellarSdk.Networks.TESTNET
+            : StellarSdk.Networks.PUBLIC,
+      };
+      console.log('Using network:', networkConfig.network);
+
+      // Initialize Stellar server
+      const server = new StellarSdk.Horizon.Server(process.env.REACT_APP_HORIZON_URL);
+      const sourceAccount = await server.loadAccount(publicKey);
 
       // Check account balance
       const xlmBalance = sourceAccount.balances.find((b) => b.asset_type === 'native');
@@ -515,12 +503,15 @@ const Create = () => {
         throw new Error('Unable to determine XLM balance');
       }
       const balance = parseFloat(xlmBalance.balance);
-      const requiredBalance = 1.0; // Base reserve + buffer (no trustline needed)
+      const requiredBalance = 1.5; // Base reserve + buffer for offer
       if (balance < requiredBalance) {
         throw new Error(
           `Insufficient XLM balance. At least ${requiredBalance} XLM required (current: ${balance.toFixed(7)} XLM)`
         );
       }
+
+      // Create the NFT asset
+      const nftAsset = new StellarSdk.Asset(validatedAssetCode, publicKey);
 
       // Helper function to submit a transaction
       const submitTransaction = async (operations, description) => {
@@ -547,6 +538,13 @@ const Create = () => {
                     name: op.name,
                     value: op.value ? op.value.toString() : null,
                   }
+                : op.type === 'manageSellOffer'
+                ? {
+                    selling: op.selling.getCode(),
+                    buying: op.buying.getCode(),
+                    amount: op.amount,
+                    price: op.price,
+                  }
                 : {}),
             });
             tx.addOperation(op);
@@ -568,10 +566,17 @@ const Create = () => {
                     name: op.name,
                     value: op.value ? op.value.toString() : null,
                   }
+                : op.type === 'manageSellOffer'
+                ? {
+                    selling: op.selling.getCode(),
+                    buying: op.buying.getCode(),
+                    amount: op.amount,
+                    price: op.price,
+                  }
                 : {}),
             })),
             sequence: built.sequence,
-            sourceAccount: built.source,
+            source: built.source,
             fee: built.fee,
           });
 
@@ -603,7 +608,7 @@ const Create = () => {
         }
       };
 
-      // Build transaction operations (skip changeTrust for issuer)
+      // Build transaction operations
       const operations = [];
 
       // Payment operation to issue the NFT
@@ -612,7 +617,7 @@ const Create = () => {
         StellarSdk.Operation.payment({
           destination: publicKey,
           asset: nftAsset,
-          amount: '1.0000000', // Fixed amount for NFT
+          amount: '1.0000000'
         })
       );
 
@@ -632,6 +637,22 @@ const Create = () => {
         }
       }
 
+      // ManageSellOffer to list NFT for sale
+      console.log('Adding manageSellOffer operation');
+      try {
+        operations.push(
+          StellarSdk.Operation.manageSellOffer({
+            selling: nftAsset,
+            buying: StellarSdk.Asset.native(),
+            amount: '1',
+            price: validatedPrice,
+          })
+        );
+      } catch (opError) {
+        console.error('manageSellOffer operation error:', opError);
+        throw new Error(`Failed to create manageSellOffer: ${opError.message}`);
+      }
+
       // Log operations
       console.log('Operations to be submitted:', operations.map((op, index) => ({
         index,
@@ -646,6 +667,13 @@ const Create = () => {
           ? {
               name: op.name,
               value: op.value ? op.value.toString() : null,
+            }
+          : op.type === 'manageSellOffer'
+          ? {
+              selling: op.selling.getCode(),
+              buying: op.buying.getCode(),
+              amount: op.amount,
+              price: op.price,
             }
           : {}),
       })));
@@ -731,16 +759,17 @@ const Create = () => {
         <Row>
           <Col md={7} className="create-nft-form">
             <h1>Create New NFT</h1>
-            
+
             {errorMsg && <Alert variant="danger">{errorMsg}</Alert>}
             {statusMsg && <Alert variant="info">{statusMsg}</Alert>}
-            
+
             <Form>
               <Form.Group className="mb-3">
                 <Form.Label>NFT Name</Form.Label>
                 <Form.Control
                   type="text"
                   placeholder="NFT Name"
+                  value={formInput.name}
                   onChange={e => setFormInput({ ...formInput, name: e.target.value })}
                 />
               </Form.Group>
@@ -751,6 +780,7 @@ const Create = () => {
                   as="textarea"
                   rows={3}
                   placeholder="NFT Description"
+                  value={formInput.description}
                   onChange={e => setFormInput({ ...formInput, description: e.target.value })}
                 />
               </Form.Group>
@@ -760,16 +790,20 @@ const Create = () => {
                 <Form.Control
                   type="number"
                   placeholder="NFT Price in XLM"
+                  step="0.0000001"
+                  min="0"
+                  value={formInput.price}
                   onChange={e => setFormInput({ ...formInput, price: e.target.value })}
                 />
               </Form.Group>
-              
+
               <Form.Group className="mb-3">
                 <Form.Label>Asset Code (max 12 characters)</Form.Label>
                 <Form.Control
                   type="text"
                   placeholder="Asset Code (e.g., MYNFT)"
                   maxLength={12}
+                  value={formInput.assetCode}
                   onChange={e => setFormInput({ ...formInput, assetCode: e.target.value })}
                 />
               </Form.Group>
@@ -786,8 +820,8 @@ const Create = () => {
                     className="d-none"
                     required
                   />
-                  <Button 
-                    variant="outline-primary" 
+                  <Button
+                    variant="outline-primary"
                     onClick={() => document.getElementById('nftImage').click()}
                   >
                     Choose Image
@@ -807,13 +841,21 @@ const Create = () => {
 
               <Button
                 onClick={createNFT}
-                disabled={isLoading || !formInput.name || !formInput.description || !formInput.price || !formInput.assetCode || !selectedFile || !envVarsLoaded}
+                disabled={
+                  isLoading ||
+                  !formInput.name ||
+                  !formInput.description ||
+                  !formInput.price ||
+                  !formInput.assetCode ||
+                  !selectedFile ||
+                  !envVarsLoaded
+                }
                 className="d-flex align-items-center justify-content-center gap-2"
               >
                 {isLoading && <Spinner animation="border" size="sm" />}
                 {isLoading ? 'Creating...' : 'Create NFT'}
               </Button>
-              
+
               {!envVarsLoaded && (
                 <Alert variant="warning" className="mt-3">
                   <strong>Environment configuration missing</strong>
@@ -828,17 +870,17 @@ const Create = () => {
               <h2>Preview</h2>
               <div className="image-preview">
                 {previewUrl ? (
-                  <img 
-                    src={previewUrl} 
-                    alt="Preview" 
+                  <img
+                    src={previewUrl}
+                    alt="Preview"
                     className="preview-image"
-                    style={{ 
-                      maxWidth: '100%', 
-                      maxHeight: '300px', 
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '300px',
                       objectFit: 'contain',
                       border: '1px solid #dee2e6',
                       borderRadius: '4px',
-                      padding: '4px'
+                      padding: '4px',
                     }}
                   />
                 ) : (
