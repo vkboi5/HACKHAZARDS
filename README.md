@@ -39,10 +39,11 @@ Our marketplace provides a user-friendly platform for artists to tokenize their 
 ## 🛠️ Tech Stack
 
 ### Core Technologies Used:
-- Frontend: React.js, React Router, CSS3
+- Frontend: React.js, React Router, Bootstrap, CSS3
 - Backend: Node.js, Express
 - Storage: IPFS via Pinata for decentralized metadata and image storage
-- Blockchain: Stellar SDK for token issuance and management
+- Blockchain: Stellar SDK (v13.2.0) for token issuance and management
+- Wallet Integration: Freighter API (v4.1.0) for seamless wallet connection
 - APIs: Stellar Horizon API for blockchain interactions
 
 ### Sponsor Technologies Used:
@@ -52,9 +53,11 @@ Our marketplace provides a user-friendly platform for artists to tokenize their 
 
 ## ✨ Key Features
 
-- ✅ **Seamless Stellar Wallet Integration**: Connect your Stellar wallet to create, buy, and sell NFTs
+- ✅ **Seamless Stellar Wallet Integration**: Connect with Freighter wallet to create, buy, and sell NFTs
 - ✅ **User-Friendly NFT Creation**: Simple interface to mint NFTs on Stellar with just a few clicks
-- ✅ **Decentralized Content Storage**: All NFT metadata and images stored on IPFS for permanence
+- ✅ **Decentralized Content Storage**: All NFT metadata and images stored on IPFS via Pinata for permanence
+- ✅ **Robust Transaction Management**: Secure signing and submitting of Stellar transactions
+- ✅ **Marketplace Listings**: List and browse NFTs with detailed metadata and pricing
 - ✅ **Social Engagement**: Like and interact with NFT listings to boost visibility
 - ✅ **Featured Collections**: Curated display of top NFT collections on the platform
 - ✅ **Mobile-Responsive Interface**: Fully functional on all device sizes
@@ -82,6 +85,7 @@ Our marketplace provides a user-friendly platform for artists to tokenize their 
 - Node.js v16+ 
 - Stellar account (testnet for development)
 - Pinata API keys for IPFS storage
+- Freighter browser extension installed (Chrome or Firefox)
 
 ### Local Setup:
 ```bash
@@ -106,6 +110,25 @@ REACT_APP_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs/
 npm start
 ```
 
+### Installation Troubleshooting
+
+If you encounter issues with dependencies:
+
+```bash
+# Clear npm cache and reinstall
+npm cache clean --force
+npm install
+
+# If you're using Yarn
+yarn cache clean
+yarn install
+```
+
+For issues with Freighter wallet connection:
+1. Ensure the Freighter extension is properly installed
+2. Check that your Freighter wallet is unlocked
+3. Make sure you're on the correct network (Testnet for development)
+
 ---
 
 ## 🧬 Future Scope
@@ -115,6 +138,8 @@ npm start
 - 🌐 **Cross-chain Bridge**: Enable interoperability with other blockchains like Ethereum
 - 💰 **Auction Functionality**: Add timed auctions with automatic settlement
 - 🔍 **Advanced Search & Discovery**: Implement AI-based recommendation system for NFT discovery
+- 🔄 **Batch Operations**: Support for minting and managing multiple NFTs in a single transaction
+- 📱 **Mobile Application**: Native mobile apps for iOS and Android platforms
 
 ---
 
@@ -122,6 +147,7 @@ npm start
 
 - [Stellar Developer Documentation](https://developers.stellar.org/docs)
 - [Stellar Laboratory](https://laboratory.stellar.org/) for testing transactions
+- [Freighter Wallet](https://www.freighter.app/) for Stellar account management
 - [IPFS & Pinata](https://pinata.cloud/) for decentralized storage
 - [React Icons](https://react-icons.github.io/react-icons/) for UI elements
 - Special thanks to the Stellar Development Foundation for their support and documentation
@@ -150,10 +176,19 @@ This project uses environment variables for configuration. We've provided a `.en
    REACT_APP_PINATA_API_SECRET=your_pinata_api_secret
    ```
 
-### Troubleshooting Pinata Issues
+### Stellar Account Configuration
+
+For Stellar operations, you'll need:
+1. A funded Stellar account on testnet (or mainnet for production)
+2. Set your issuer and distribution account keys in `.env`:
+   ```
+   REACT_APP_STELLAR_ISSUER_PUBLIC_KEY=your_issuer_public_key
+   REACT_APP_STELLAR_ISSUER_SECRET_KEY=your_issuer_secret_key
+   ```
+
+### Troubleshooting
 
 If you encounter issues with Pinata uploads:
-
 1. Verify your API keys are correct in the `.env` file
 2. Check that your Pinata account has sufficient storage space
 3. Ensure your network connection is stable
