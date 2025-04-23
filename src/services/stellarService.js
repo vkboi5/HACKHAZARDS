@@ -789,10 +789,10 @@ class StellarService {
           }
         } catch (finalError) {
           console.warn(`[NFT-STEP4] Final verification error:`, finalError);
-          // Continue anyway since the issuance was successful
+   
         }
         
-        // Return combined results
+       
         let finalResult = {
           hash: issueResult.hash,
           ledger: issueResult.ledger,
