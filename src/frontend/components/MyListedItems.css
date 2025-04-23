@@ -66,7 +66,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem;
+  padding: 0.8rem;
   background-color: #F4F4F9;
   border-top: 1px solid #e1e1e1;
   border-radius: 0 0 10px 10px;
@@ -271,4 +271,75 @@
 
 .popup-buttons .cancel-button:hover {
   background-color: #95a5a6; /* Darker grey */
+}
+
+.card-badge-container {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.card-badge {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.creator-badge {
+  background-color: #4CAF50; /* Green */
+}
+
+.collector-badge {
+  background-color: #2196F3; /* Blue */
+}
+
+.sale-badge {
+  background-color: #ff9800; /* Orange */
+}
+
+.card-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.card-title {
+  font-weight: bold;
+  font-size: 1.1rem;
+  margin-bottom: 5px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-price {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.delete-icon {
+  cursor: pointer;
+  color: #e74c3c;
+  transition: color 0.3s ease;
+}
+
+.delete-icon:hover {
+  color: #c0392b;
 }
