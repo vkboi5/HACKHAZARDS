@@ -9,14 +9,14 @@ import './App.css';
 // Security alert component
 import SecurityAlert from './SecurityAlert';
 
-// Stellar imports
-import { StellarWalletProvider } from './StellarWalletProvider';
-import { StellarWalletConnection } from './StellarWalletConnection';
+// Wallet imports
+import { WalletConnectProvider } from './WalletConnectProvider';
+import { WalletConnectConnection } from './WalletConnectConnection';
 import StellarSetup from './StellarSetup';
 
 function App() {
   return (
-    <StellarWalletProvider>
+    <WalletConnectProvider>
       <BrowserRouter>
         <div className="App">
           <Navigation />
@@ -29,7 +29,7 @@ function App() {
               <Route path="/my-purchases" element={<MyPurchases />} />
               <Route path="/stellar-setup" element={
                 <div className="section">
-                  <StellarWalletConnection />
+                  <WalletConnectConnection />
                   <div className="mt-4">
                     <StellarSetup />
                   </div>
@@ -39,7 +39,7 @@ function App() {
           </div>
         </div>
       </BrowserRouter>
-    </StellarWalletProvider>
+    </WalletConnectProvider>
   );
 }
 
