@@ -7,7 +7,7 @@ import { FaTimes, FaWhatsapp, FaTwitter, FaFacebook, FaLinkedin, FaPinterest, Fa
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './MyListedItems.css';
-import loaderGif from './loader.gif';
+import loaderGif from '../../assets/images/ui/loader.gif';
 import { Container, Row, Col, Card, Button, Alert, Spinner } from 'react-bootstrap';
 
 // Function to render sold items

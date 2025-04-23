@@ -7,10 +7,11 @@ import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { FaHeart, FaTimes } from 'react-icons/fa';
 import Confetti from 'react-dom-confetti';
-import loaderGif from './loader.gif';
+import loaderGif from '../../assets/images/ui/loader.gif';
 import './Home.css';
+import './App.css';
 import Popup from 'reactjs-popup';
-import backgroundImg from './bgfinal.png';
+import backgroundImg from '../../assets/images/backgrounds/bgfinal.png';
 import ItemDetailsModal from './ItemDetailsModal';
 
 const PINATA_BASE_URL = 'https://api.pinata.cloud';

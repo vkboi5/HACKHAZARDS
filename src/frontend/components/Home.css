@@ -91,7 +91,7 @@
 .hero-illustration {
   flex: 1;
   height: 500px;
-  background-image: url('./bgfinal.png');
+  background-image: url('../../assets/images/backgrounds/bgfinal.png');
   background-size: contain;
   background-position: right center;
   background-repeat: no-repeat;
@@ -192,7 +192,7 @@
   align-items: center;
   opacity: 0; /* Initial state for animation */
   animation: slideInLeft 1s forwards, floatAnimation 3s infinite alternate; /* Animation */
-  background: url('./myimage.png');
+  background: url('../../assets/images/nft-examples/myimage.png');
   background-size: 98%;
 }
 

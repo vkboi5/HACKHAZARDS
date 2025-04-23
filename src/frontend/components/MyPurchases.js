@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useWalletConnect } from './WalletConnectProvider';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import axios from 'axios';
-import loaderGif from './loader.gif';
+import loaderGif from '../../assets/images/ui/loader.gif';
 import './MyPurchases.css';
 
 export default function MyPurchases() {

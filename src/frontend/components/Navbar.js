@@ -2,7 +2,8 @@ import './Navbar.css';
 import { Link } from "react-router-dom";
 import { Navbar, Nav, Button, Container, Badge, Dropdown } from 'react-bootstrap';
 import { useStellarWallet } from './StellarWalletProvider';
-import logo from './logo.png';
+import React from 'react';
+import logo from '../../assets/images/logos/logo.png';
 import { FaWallet, FaSignOutAlt, FaExternalLinkAlt } from 'react-icons/fa';
 
 const Navigation = () => {
