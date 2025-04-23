@@ -716,7 +716,7 @@ const HomePage = ({ marketplace, walletBalance }) => {
           show={showModal}
           onHide={() => {
             setShowModal(false);
-            loadNFTs(); // Refresh NFT list after modal closes
+            loadNFTs(); 
           }}
           item={selectedItem}
           onBid={handlePlaceBid}
