@@ -1,8 +1,8 @@
-import React from 'react';
-import { Modal, Button, Form } from 'react-bootstrap';
+import React, { useState } from 'react';
+import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import { FaHeart, FaShareAlt } from 'react-icons/fa';
 import { toast } from 'react-toastify';
-import { useStellarWallet } from './StellarWalletProvider';
+import { useWalletConnect } from './WalletConnectProvider';
 import './ItemDetailsModal.css';
 
 const ItemDetailsModal = ({ 
@@ -11,10 +11,11 @@ const ItemDetailsModal = ({
   item, 
   onBid, 
   bidAmount, 
-  setBidAmount, 
-  isConnected 
+  setBidAmount
 }) => {
-  const { publicKey } = useStellarWallet();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const { publicKey, isConnected } = useWalletConnect();
   
   const handleBidSubmit = (e) => {
     e.preventDefault();
