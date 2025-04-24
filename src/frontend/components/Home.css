@@ -655,3 +655,64 @@
   padding: 0.35rem 0.75rem;
   font-size: 0.85rem;
 }
+
+.auction-card {
+  transition: transform 0.3s ease;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.auction-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+.auction-card .card-img-top {
+  height: 200px;
+  object-fit: cover;
+}
+
+.auction-card .card-body {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.time-remaining {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #0d6efd;
+  margin-top: 5px;
+}
+
+.price-tag {
+  font-weight: 500;
+  color: #198754;
+  font-size: 1.1rem;
+  margin-top: 5px;
+}
+
+.highest-bid {
+  font-weight: 500;
+  color: #d63384;
+}
+
+.bid-form {
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.bids-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.bid-item {
+  background-color: #f8f9fa;
+  border-radius: 4px;
+}
+
+.bid-item:hover {
+  background-color: #e9ecef;
+}

@@ -12,6 +12,9 @@ import './Home.css';
 import Popup from 'reactjs-popup';
 import backgroundImg from './bgfinal.png';
 import ItemDetailsModal from './ItemDetailsModal';
+import AuctionCard from './AuctionCard';
+import { Card, Button, Spinner } from 'react-bootstrap';
+import { Col } from 'react-bootstrap';
 
 const PINATA_BASE_URL = 'https://api.pinata.cloud';
 
@@ -33,6 +36,7 @@ const HomePage = ({ marketplace, walletBalance }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [imageCache, setImageCache] = useState({});
   const [error, setError] = useState(null);
+  const [buying, setBuying] = useState(false);
 
   const handleCreateClick = () => {
     if (!isConnected) {
@@ -580,6 +584,11 @@ const HomePage = ({ marketplace, walletBalance }) => {
     console.error(`Failed to load image: ${e.target.src}`);
   };
 
+  const handleBidPlaced = (nft, bidAmount) => {
+    console.log(`Bid placed on ${nft.name} for ${bidAmount} XLM`);
+    loadNFTs();
+  };
+
   return (
     <div className="home-container">
       <div className="gradient-section">
@@ -636,66 +645,41 @@ const HomePage = ({ marketplace, walletBalance }) => {
               {items.length > 0 ? (
                 items
                   .filter((item) => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                  .map((item, idx) => (
-                    <div key={idx} className="NftCard">
-                      <Confetti active={confettiTrigger[item.itemId] || false} config={{ spread: 360, elementCount: 100 }} />
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="NftCardImage"
-                        loading="lazy"
-                        onError={handleImageError}
-                        style={{
-                          backgroundImage: `url(${loaderGif})`,
-                          backgroundSize: 'cover',
-                          backgroundPosition: 'center',
-                        }}
-                      />
-                      <div className="NftCardContent">
-                        <h3 className="NftCardTitle">{item.name}</h3>
-                        <p className="NftCardDescription">{item.description}</p>
-                        <div className="account-badge">
-                          {item.accountId ===
-                            'GAHDNV6A6NSOQM5AMU64NH2LOOAIK474NCGX2FXTXBKD5YUZLTZQKSPV' && (
-                            <span className="badge bg-info">
-                              <small>Featured Collection</small>
-                            </span>
-                          )}
-                          {item.accountId === publicKey && (
-                            <span className="badge bg-success">
-                              <small>Your Collection</small>
-                            </span>
-                          )}
-                          <span className="badge bg-light text-dark">
-                            <small>Owner: {formatWalletAddress(item.accountId)}</small>
-                          </span>
-                          {!item.isVerifiedOnStellar && (
-                            <span className="badge bg-warning">
-                              <small>Not Verified on Stellar</small>
-                            </span>
-                          )}
-                        </div>
-                        <div className="d-flex justify-content-between align-items-center mb-2">
-                          <span className="NftCardPrice">{item.price || '0'} XLM</span>
-                          <div>
-                            <button
-                              className="btn btn-outline-danger btn-sm me-2"
-                              onClick={() => handleLike(item.itemId)}
-                            >
-                              <FaHeart style={{ color: likedItems[item.itemId] ? '#dc3545' : 'inherit' }} />{' '}
-                              {likes[item.itemId] || 0}
-                            </button>
-                            <button
-                              className="btn btn-primary btn-sm"
-                              onClick={() => handleViewDetails(item)}
-                            >
-                              View
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
+                  .map((item, idx) => {
+                    const isAuctionOrBid = item.type === 'open_bid' || item.type === 'timed_auction';
+                    
+                    return (
+                      <Col key={idx} className="overflow-hidden">
+                        {isAuctionOrBid ? (
+                          <AuctionCard 
+                            nft={item} 
+                            onBidPlaced={handleBidPlaced} 
+                            refreshNFTs={loadNFTs} 
+                          />
+                        ) : (
+                          <Card className="market-item-card">
+                            <Card.Img variant="top" src={item.image} className="card-img-top" />
+                            <Card.Body>
+                              <Card.Title>{item.name}</Card.Title>
+                              <Card.Text>{item.description}</Card.Text>
+                              <div className="d-flex justify-content-between align-items-center">
+                                <div className="price-container">{item.price} XLM</div>
+                                <Button 
+                                  onClick={() => handleViewDetails(item)}
+                                  disabled={item.accountId === publicKey || !isConnected || buying}>
+                                  {buying === item.id ? (
+                                    <Spinner animation="border" size="sm" />
+                                  ) : (
+                                    "Buy"
+                                  )}
+                                </Button>
+                              </div>
+                            </Card.Body>
+                          </Card>
+                        )}
+                      </Col>
+                    );
+                  })
               ) : (
                 <div className="text-center my-5">
                   <h4>No NFTs Found</h4>

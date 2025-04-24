@@ -34,6 +34,7 @@
     "process": "^0.11.10",
     "react": "^18.3.1",
     "react-bootstrap": "^2.1.2",
+    "react-datepicker": "^8.3.0",
     "react-dom": "^18.3.1",
     "react-dom-confetti": "^0.2.0",
     "react-hot-toast": "^2.5.2",

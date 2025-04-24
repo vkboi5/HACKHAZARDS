@@ -358,3 +358,44 @@ input[type="file"] {
   background-color: #bdc3c7;
   border-color: #bdc3c7;
 }
+
+.create-nft-tabs {
+  border-bottom: 1px solid #dee2e6;
+  margin-bottom: 20px;
+}
+
+.create-nft-tabs .nav-link {
+  border: none;
+  color: #6c757d;
+  background: transparent;
+  font-weight: 500;
+  padding: 10px 15px;
+  margin-right: 5px;
+  border-radius: 3px 3px 0 0;
+}
+
+.create-nft-tabs .nav-link.active {
+  color: #0d6efd;
+  border-bottom: 2px solid #0d6efd;
+  background-color: rgba(13, 110, 253, 0.04);
+}
+
+.create-nft-tabs .nav-link:hover:not(.active) {
+  color: #0d6efd;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.preview-details .auction-end {
+  font-size: 0.9rem;
+  color: #6c757d;
+  margin-top: 5px;
+}
+
+.react-datepicker-wrapper {
+  width: 100%;
+}
+
+.form-control:disabled {
+  background-color: #e9ecef;
+  opacity: 0.7;
+}
