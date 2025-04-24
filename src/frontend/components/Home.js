@@ -17,6 +17,15 @@ import { Card, Button, Spinner } from 'react-bootstrap';
 import { Col, Row } from 'react-bootstrap';
 import MarketplaceService from '../components/MarketplaceService';
 
+// Environment variables
+const HORIZON_URL = process.env.REACT_APP_HORIZON_URL || 'https://horizon-testnet.stellar.org';
+const NETWORK_PASSPHRASE = process.env.REACT_APP_STELLAR_NETWORK === 'TESTNET'
+  ? StellarSdk.Networks.TESTNET
+  : StellarSdk.Networks.PUBLIC;
+
+// Initialize Stellar server
+const server = new StellarSdk.Horizon.Server(HORIZON_URL);
+
 const PINATA_BASE_URL = 'https://api.pinata.cloud';
 
 const HomePage = ({ marketplace, walletBalance }) => {
@@ -137,6 +146,20 @@ const HomePage = ({ marketplace, walletBalance }) => {
     try {
       setLoading(true);
       setLoadingState('loading');
+      setError(null);
+
+      console.log('Loading NFTs...');
+      
+      // Load the user's account data if they are connected
+      let userAccount = null;
+      if (publicKey && isConnected) {
+        try {
+          userAccount = await server.loadAccount(publicKey);
+          console.log('Loaded user account:', publicKey);
+        } catch (accountError) {
+          console.error('Error loading user account:', accountError);
+        }
+      }
 
       console.log('Environment variables:', {
         PINATA_API_KEY: process.env.REACT_APP_PINATA_API_KEY?.slice(0, 5) || 'undefined',
@@ -450,11 +473,29 @@ const HomePage = ({ marketplace, walletBalance }) => {
 
       let filteredItems = [...nftItems];
       
-      if (publicKey) {
-        filteredItems = filteredItems.filter(item => {
-          return !(item.type === 'fixed_price' && item.creator === publicKey);
-        });
-      }
+      // Filter out purchased NFTs
+      filteredItems = filteredItems.filter(item => {
+        // Check localStorage for purchased NFTs to ensure immediate update
+        const purchasedItems = JSON.parse(localStorage.getItem('purchasedNfts') || '[]');
+        if (purchasedItems.includes(item.assetCode)) {
+          return false;
+        }
+        
+        // Filter out fixed price NFTs that the user already owns
+        // In Stellar, if a user owns an NFT, they would have a positive balance of that asset
+        if (publicKey && item.type === 'fixed_price') {
+          const assetBalance = userAccount?.balances?.find(balance => 
+            balance.asset_code === item.assetCode && 
+            balance.asset_issuer === item.creator
+          );
+          
+          // If user has a positive balance of this NFT, they already own it
+          if (assetBalance && parseFloat(assetBalance.balance) > 0) {
+            return false;
+          }
+        }
+        return true;
+      });
       
       if (selectedFilter && sortOrder) {
         filteredItems.sort((a, b) => {
@@ -679,6 +720,19 @@ const HomePage = ({ marketplace, walletBalance }) => {
       toast.success(`Successfully purchased ${item.name} for ${validatedPrice} XLM!`, {
         position: 'top-center',
       });
+      
+      // Mark the item as purchased in local storage to ensure it's reflected immediately
+      try {
+        const purchasedItems = JSON.parse(localStorage.getItem('purchasedNfts') || '[]');
+        if (!purchasedItems.includes(item.assetCode)) {
+          purchasedItems.push(item.assetCode);
+          localStorage.setItem('purchasedNfts', JSON.stringify(purchasedItems));
+        }
+        // Trigger a storage event for other components to react
+        localStorage.setItem('nftPurchased', new Date().toISOString());
+      } catch (storageError) {
+        console.error('Error storing purchase in localStorage:', storageError);
+      }
       
       // Refresh NFTs after purchase
       setTimeout(() => {

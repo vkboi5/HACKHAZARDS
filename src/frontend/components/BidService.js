@@ -118,21 +118,33 @@ class BidService {
       // Build and submit transaction
       const builtTx = transaction.setTimeout(180).build();
       const xdr = builtTx.toXDR();
-      const result = await signAndSubmitTransaction(xdr);
+      
+      // Sign and submit with better error handling
+      try {
+        const result = await signAndSubmitTransaction(xdr);
+        console.log('Bid placed successfully:', result);
 
-      console.log('Bid placed successfully:', result);
+        // Store bid information in IPFS for better indexing and retrieval
+        await this.storeBidMetadata({
+          nftAssetCode,
+          issuerPublicKey: validatedIssuer,
+          bidderPublicKey: validatedBidder,
+          bidAmount: validatedBidAmount,
+          timestamp,
+          txHash: result.hash,
+        });
 
-      // Store bid information in IPFS for better indexing and retrieval
-      await this.storeBidMetadata({
-        nftAssetCode,
-        issuerPublicKey: validatedIssuer,
-        bidderPublicKey: validatedBidder,
-        bidAmount: validatedBidAmount,
-        timestamp,
-        txHash: result.hash,
-      });
-
-      return result;
+        return result;
+      } catch (txError) {
+        console.error('Transaction signing/submission error:', txError);
+        
+        // Handle specific error messages from WalletConnect
+        if (txError.message.includes('cancelled by the user')) {
+          throw new Error('Bid cancelled: You cancelled the transaction in your wallet');
+        } else {
+          throw txError; // Rethrow the original error
+        }
+      }
     } catch (error) {
       console.error('Place bid error:', error);
       if (error.response?.data?.extras?.result_codes) {

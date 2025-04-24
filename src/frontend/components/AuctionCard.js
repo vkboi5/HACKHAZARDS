@@ -116,15 +116,12 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
 
   const handleBid = async () => {
     try {
-      setBidError(null);
-      
       if (!isConnected) {
-        setBidError('Please connect your wallet first');
         toast.error('Please connect your wallet first');
         return;
       }
       
-      if (!bidAmount || isNaN(parseFloat(bidAmount)) || parseFloat(bidAmount) <= 0) {
+      if (!bidAmount || parseFloat(bidAmount) <= 0) {
         setBidError('Please enter a valid bid amount');
         toast.error('Please enter a valid bid amount');
         return;
@@ -152,31 +149,43 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
         amount: bidAmount
       });
       
-      const result = await BidService.placeBid(
-        nft.assetCode,
-        nft.creator,
-        publicKey,
-        bidAmount,
-        signAndSubmitTransaction
-      );
-      
-      console.log('Bid placed successfully:', result);
-      toast.success('Bid placed successfully!');
-      setBidAmount('');
-      
-      // Refresh bids
-      await fetchBids();
-      
-      // Notify parent component
-      if (onBidPlaced) {
-        onBidPlaced(nft, bidAmount);
+      try {
+        const result = await BidService.placeBid(
+          nft.assetCode,
+          nft.creator,
+          publicKey,
+          bidAmount,
+          signAndSubmitTransaction
+        );
+        
+        console.log('Bid placed successfully:', result);
+        toast.success('Bid placed successfully!');
+        setBidAmount('');
+        
+        // Refresh bids
+        await fetchBids();
+        
+        // Notify parent component
+        if (onBidPlaced) {
+          onBidPlaced(nft, bidAmount);
+        }
+      } catch (bidError) {
+        console.error('Error placing bid:', bidError);
+        
+        // Check for user cancellation
+        if (bidError.message && bidError.message.includes('cancelled by the user')) {
+          setBidError('Bid cancelled: You cancelled the transaction in your wallet');
+          toast.info('Bid cancelled: You cancelled the transaction in your wallet');
+        } else {
+          setBidError(bidError.message || 'Failed to place bid');
+          toast.error(bidError.message || 'Failed to place bid');
+        }
+        throw bidError; // Rethrow to be caught by outer catch
       }
       
       setLoading(false);
     } catch (error) {
-      console.error('Error placing bid:', error);
-      setBidError(error.message || 'Failed to place bid');
-      toast.error(error.message || 'Failed to place bid');
+      console.error('Error in bid process:', error);
       setLoading(false);
     }
   };
