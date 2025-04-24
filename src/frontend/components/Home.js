@@ -475,23 +475,38 @@ const HomePage = ({ marketplace, walletBalance }) => {
       
       // Filter out purchased NFTs
       filteredItems = filteredItems.filter(item => {
-        // Check localStorage for purchased NFTs to ensure immediate update
+        // 1. Check localStorage for purchased NFTs to ensure immediate update
         const purchasedItems = JSON.parse(localStorage.getItem('purchasedNfts') || '[]');
         if (purchasedItems.includes(item.assetCode)) {
           return false;
         }
         
-        // Filter out fixed price NFTs that the user already owns
-        // In Stellar, if a user owns an NFT, they would have a positive balance of that asset
+        // 2. Check if this NFT was sold via bid acceptance
+        const salesHistory = JSON.parse(localStorage.getItem('nftSales') || '[]');
+        const isSold = salesHistory.some(sale => 
+          sale.assetCode === item.assetCode && 
+          sale.saleType === 'bid_accepted'
+        );
+        if (isSold) {
+          return false;
+        }
+        
+        // 3. Filter out fixed price NFTs that the user already owns
         if (publicKey && item.type === 'fixed_price') {
-          const assetBalance = userAccount?.balances?.find(balance => 
-            balance.asset_code === item.assetCode && 
-            balance.asset_issuer === item.creator
-          );
+          // Check if user is the creator/issuer of this NFT
+          const isCreator = item.creator === publicKey;
           
-          // If user has a positive balance of this NFT, they already own it
-          if (assetBalance && parseFloat(assetBalance.balance) > 0) {
-            return false;
+          // If user is NOT the creator, then check if they own this NFT
+          if (!isCreator) {
+            const assetBalance = userAccount?.balances?.find(balance => 
+              balance.asset_code === item.assetCode && 
+              balance.asset_issuer === item.creator
+            );
+            
+            // If user has a positive balance of this NFT and is not the creator, they purchased it
+            if (assetBalance && parseFloat(assetBalance.balance) > 0) {
+              return false;
+            }
           }
         }
         return true;
@@ -814,11 +829,6 @@ const HomePage = ({ marketplace, walletBalance }) => {
                     });
                     
                     const isAuctionOrBid = item.type === 'open_bid' || item.type === 'timed_auction';
-                    
-                    // Don't show NFTs owned by the current user
-                    if (item.creator === publicKey && item.type === 'fixed_price') {
-                      return null;
-                    }
                     
                     return (
                       <div key={idx} className="nft-grid-item">

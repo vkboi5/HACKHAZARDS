@@ -206,29 +206,91 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
       
       // Accept bid
       console.log('Accepting bid:', bid);
-      const result = await BidService.acceptBid(
-        nft.assetCode,
-        publicKey,
-        bid.bidderPublicKey,
-        bid.bidAmount,
-        signAndSubmitTransaction
-      );
       
-      console.log('Bid accepted result:', result);
-      toast.success('Bid accepted successfully!');
-      
-      // Refresh NFTs
-      if (refreshNFTs) {
-        setTimeout(() => {
-          refreshNFTs();
-        }, 3000);
+      try {
+        const result = await BidService.acceptBid(
+          nft.assetCode,
+          publicKey,
+          bid.bidderPublicKey,
+          bid.bidAmount,
+          signAndSubmitTransaction
+        );
+        
+        console.log('Bid accepted result:', result);
+        toast.success('Bid accepted successfully!');
+        
+        // Mark the NFT as sold in localStorage
+        try {
+          // Record the sale in localStorage to ensure it's reflected immediately
+          // 1. Add to purchasedNfts list to filter from Home page
+          const purchasedItems = JSON.parse(localStorage.getItem('purchasedNfts') || '[]');
+          if (!purchasedItems.includes(nft.assetCode)) {
+            purchasedItems.push(nft.assetCode);
+            localStorage.setItem('purchasedNfts', JSON.stringify(purchasedItems));
+          }
+          
+          // 2. Store detailed sale information
+          const salesHistory = JSON.parse(localStorage.getItem('nftSales') || '[]');
+          salesHistory.push({
+            assetCode: nft.assetCode,
+            name: nft.name,
+            image: nft.image,
+            seller: publicKey,
+            buyer: bid.bidderPublicKey,
+            price: bid.bidAmount,
+            timestamp: new Date().toISOString(),
+            saleType: 'bid_accepted',
+            txHash: result.hash
+          });
+          localStorage.setItem('nftSales', JSON.stringify(salesHistory));
+          
+          // 3. Trigger a storage event for components to react
+          localStorage.setItem('nftPurchased', new Date().toISOString());
+        } catch (storageError) {
+          console.error('Error storing sale in localStorage:', storageError);
+        }
+        
+        // Refresh NFTs
+        if (refreshNFTs) {
+          setTimeout(() => {
+            refreshNFTs();
+          }, 3000);
+        }
+        
+        setShowBidsModal(false);
+      } catch (bidError) {
+        // Handle specific transaction errors
+        let errorMessage = bidError.message || 'Failed to accept bid';
+        
+        if (errorMessage.includes('value cannot be longer')) {
+          errorMessage = 'Failed to store NFT sale metadata. The transaction will still be processed.';
+          toast.warning(errorMessage);
+          
+          // This is a non-critical error, so we'll continue with the local updates
+          const purchasedItems = JSON.parse(localStorage.getItem('purchasedNfts') || '[]');
+          if (!purchasedItems.includes(nft.assetCode)) {
+            purchasedItems.push(nft.assetCode);
+            localStorage.setItem('purchasedNfts', JSON.stringify(purchasedItems));
+          }
+          
+          // Refresh NFTs to show the changes
+          if (refreshNFTs) {
+            setTimeout(() => {
+              refreshNFTs();
+            }, 3000);
+          }
+          
+          setShowBidsModal(false);
+        } else {
+          console.error('Error accepting bid:', bidError);
+          toast.error(errorMessage);
+        }
       }
       
       setLoading(false);
-      setShowBidsModal(false);
     } catch (error) {
-      console.error('Error accepting bid:', error);
-      toast.error(error.message || 'Failed to accept bid');
+      console.error('Error in bid acceptance process:', error);
+      toast.error(error.message || 'Failed to process bid acceptance');
       setLoading(false);
     }
   };
@@ -256,6 +318,36 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
       
       if (result.winner) {
         toast.success(`Auction finalized! NFT sold to ${result.winner && result.winner.substring(0, 10)}... for ${result.amount} XLM`);
+        
+        // Record the auction sale in localStorage
+        try {
+          // Add to purchasedNfts list to filter from Home page
+          const purchasedItems = JSON.parse(localStorage.getItem('purchasedNfts') || '[]');
+          if (!purchasedItems.includes(nft.assetCode)) {
+            purchasedItems.push(nft.assetCode);
+            localStorage.setItem('purchasedNfts', JSON.stringify(purchasedItems));
+          }
+          
+          // Store detailed sale information
+          const salesHistory = JSON.parse(localStorage.getItem('nftSales') || '[]');
+          salesHistory.push({
+            assetCode: nft.assetCode,
+            name: nft.name,
+            image: nft.image,
+            seller: publicKey,
+            buyer: result.winner,
+            price: result.amount,
+            timestamp: new Date().toISOString(),
+            saleType: 'auction_finalized',
+            txHash: result.hash
+          });
+          localStorage.setItem('nftSales', JSON.stringify(salesHistory));
+          
+          // Trigger a storage event for components to react
+          localStorage.setItem('nftPurchased', new Date().toISOString());
+        } catch (storageError) {
+          console.error('Error storing auction sale in localStorage:', storageError);
+        }
       } else {
         toast.info('Auction finalized with no bids');
       }

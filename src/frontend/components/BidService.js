@@ -345,13 +345,128 @@ class BidService {
         throw new Error(`Failed to create manageSellOffer: ${opError.message}`);
       }
 
+      // Add data entries to mark the NFT as sold
+      // Instead of storing a large JSON object, use separate entries with smaller values
+      // Use simple keys and values to stay under the 64-byte limit
+      try {
+        // Mark the NFT as sold
+        transaction.addOperation(
+          StellarSdk.Operation.manageData({
+            name: `nft_${nftAssetCode}_sold`,
+            value: Buffer.from('true'),
+          })
+        );
+        
+        // Store the buyer's public key - first 20 chars (enough to identify)
+        transaction.addOperation(
+          StellarSdk.Operation.manageData({
+            name: `nft_${nftAssetCode}_buyer`,
+            value: Buffer.from(validatedBidder.substring(0, 20)),
+          })
+        );
+        
+        // Store the price
+        transaction.addOperation(
+          StellarSdk.Operation.manageData({
+            name: `nft_${nftAssetCode}_price`,
+            value: Buffer.from(validatedBidAmount),
+          })
+        );
+        
+        // Store timestamp as UNIX timestamp (much smaller than ISO string)
+        transaction.addOperation(
+          StellarSdk.Operation.manageData({
+            name: `nft_${nftAssetCode}_time`,
+            value: Buffer.from(Math.floor(Date.now() / 1000).toString()),
+          })
+        );
+      } catch (dataError) {
+        console.error('manageData operation error:', dataError);
+        // Continue without the data entries if they fail
+        console.warn('Continuing without data entries due to error');
+      }
+
       // Build and submit transaction
       const builtTx = transaction.setTimeout(180).build();
       const xdr = builtTx.toXDR();
-      const result = await signAndSubmitTransaction(xdr);
+      
+      // Log the XDR for debugging
+      console.log(`Transaction XDR length: ${xdr.length} characters`);
+      
+      let result;
+      try {
+        result = await signAndSubmitTransaction(xdr);
+        console.log('Bid accepted successfully:', result);
+      } catch (submitError) {
+        console.error('Transaction submission error:', submitError);
+        
+        // Check if the error is related to data entries
+        if (submitError.message && submitError.message.includes('value cannot be longer')) {
+          console.warn('Data entry error detected. Trying again without data entries...');
+          
+          // Rebuild the transaction without the data entries
+          const simpleTransaction = new StellarSdk.TransactionBuilder(account, {
+            fee: StellarSdk.BASE_FEE,
+            networkPassphrase: NETWORK_PASSPHRASE,
+          }).addOperation(
+            StellarSdk.Operation.manageSellOffer({
+              selling: nftAsset,
+              buying: StellarSdk.Asset.native(),
+              amount: '1',
+              price: validatedBidAmount,
+            })
+          ).setTimeout(180).build();
+          
+          const simpleXdr = simpleTransaction.toXDR();
+          result = await signAndSubmitTransaction(simpleXdr);
+          console.log('Bid accepted with simplified transaction:', result);
+        } else {
+          // Rethrow other errors
+          throw submitError;
+        }
+      }
+      
+      // Store sale metadata in IPFS for better indexing and retrieval
+      try {
+        if (PINATA_API_KEY && PINATA_API_SECRET) {
+          const response = await axios.post(
+            `${PINATA_BASE_URL}/pinning/pinJSONToIPFS`,
+            {
+              pinataMetadata: {
+                name: `sale-${nftAssetCode}`,
+                keyvalues: {
+                  app: 'Galerie',
+                  type: 'sale',
+                  assetCode: nftAssetCode,
+                  issuer: validatedOwner,
+                  buyer: validatedBidder,
+                }
+              },
+              pinataContent: {
+                nftAssetCode,
+                issuerPublicKey: validatedOwner,
+                buyerPublicKey: validatedBidder,
+                price: validatedBidAmount,
+                timestamp: new Date().toISOString(),
+                txHash: result.hash,
+                saleType: 'bid_accepted'
+              }
+            },
+            {
+              headers: {
+                pinata_api_key: PINATA_API_KEY,
+                pinata_secret_api_key: PINATA_API_SECRET,
+              }
+            }
+          );
+          console.log('Sale metadata stored in IPFS:', response.data.IpfsHash);
+        }
+      } catch (ipfsError) {
+        console.error('Failed to store sale metadata in IPFS:', ipfsError);
+        // Non-critical error, continue execution
+      }
 
-      console.log('Bid accepted successfully:', result);
-      return result;
+      return { ...result, bidderPublicKey: validatedBidder };
     } catch (error) {
       console.error('Accept bid error:', error);
       if (error.response?.data?.extras?.result_codes) {
