@@ -225,15 +225,20 @@ class BidService {
               const metadataResponse = await axios.get(metadataUrl);
               const bidData = metadataResponse.data;
 
-              bids.push({
-                id: ipfsHash,
-                nftAssetCode: bidData.nftAssetCode,
-                issuerPublicKey: bidData.issuerPublicKey,
-                bidderPublicKey: bidData.bidderPublicKey,
-                bidAmount: bidData.bidAmount,
-                timestamp: bidData.timestamp,
-                txHash: bidData.txHash,
-              });
+              // Validate bid data before adding it
+              if (bidData.bidderPublicKey && StellarSdk.StrKey.isValidEd25519PublicKey(bidData.bidderPublicKey)) {
+                bids.push({
+                  id: ipfsHash,
+                  nftAssetCode: bidData.nftAssetCode,
+                  issuerPublicKey: bidData.issuerPublicKey,
+                  bidderPublicKey: bidData.bidderPublicKey,
+                  bidAmount: bidData.bidAmount,
+                  timestamp: bidData.timestamp,
+                  txHash: bidData.txHash,
+                });
+              } else {
+                console.warn(`Skipping bid with invalid bidderPublicKey: ${bidData.bidderPublicKey}`);
+              }
             } catch (itemError) {
               console.error(`Error processing bid item ${item.ipfs_pin_hash}:`, itemError);
             }

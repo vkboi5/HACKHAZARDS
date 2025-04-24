@@ -14,15 +14,14 @@ html, body {
 
 /* Content */
 .content {
-  padding: 2rem;
+  padding: 2.5rem;
   max-width: 600px;
   width: 100%;
   background: white;
   border-radius: 20px;
-  box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.15);
   margin: 0 auto; /* Center the content */
-  margin-right: 50px !important;
-  margin-top: -50px !important;
+  margin-top: 20px !important;
 }
 
 /* Form Control */
@@ -30,11 +29,11 @@ form .form-control {
   border: 2px solid #e5e5e5;
   border-radius: 10px;
   padding: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.2rem;
   color: #333;
-  
   font-size: 1rem;
   transition: border-color 0.3s;
+  background-color: #fff;
 }
 
 form .form-control::placeholder {
@@ -43,8 +42,9 @@ form .form-control::placeholder {
 
 form .form-control:focus {
   background: #ffffff;
-  border-color: #c4c4c4;
+  border-color: #3498db;
   outline: none;
+  box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
 }
 
 /* Custom file upload button */
@@ -56,14 +56,15 @@ input[type="file"] {
   display: inline-block;
   padding: 0.5rem 1rem;
   cursor: pointer;
-  background-color: #6200ea;
+  background-color: #3498db;
   color: white;
   border-radius: 8px;
   transition: background-color 0.3s;
+  font-weight: 500;
 }
 
 .custom-file-upload:hover {
-  background-color: #4b00b5;
+  background-color: #2980b9;
 }
 
 .custom-file-upload:disabled {
@@ -79,13 +80,14 @@ input[type="file"] {
   align-items: center;
   border: 2px dashed #ccc;
   border-radius: 10px;
-  padding: 1rem;
-  margin-bottom: 1rem;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
   transition: border-color 0.3s;
+  background-color: #f8f9fa;
 }
 
 .upload-container:hover {
-  border-color: #6200ea;
+  border-color: #3498db;
 }
 
 .upload-container span {
@@ -96,13 +98,15 @@ input[type="file"] {
 
 /* Method Selection */
 .method-selection {
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .method-selection label {
   display: block;
   font-weight: bold;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.8rem;
+  color: #333;
+  font-size: 1.1rem;
 }
 
 .method-options {
@@ -114,13 +118,14 @@ input[type="file"] {
 .method-option {
   display: flex;
   align-items: center;
-  padding: 0.5rem;
+  padding: 0.8rem;
   border: 2px solid #ccc;
   border-radius: 10px;
   cursor: pointer;
   flex-grow: 1;
   margin-bottom: 1rem; /* Add space between options */
   transition: background-color 0.3s, border-color 0.3s;
+  font-weight: 500;
 }
 
 .method-option:last-child {
@@ -128,12 +133,12 @@ input[type="file"] {
 }
 
 .method-option span {
-  margin-left: 0.5rem;
+  margin-left: 0.8rem;
 }
 
 .method-option.selected {
-  background-color: #6200ea;
-  border-color: #4b00b5;
+  background-color: #3498db;
+  border-color: #2980b9;
   color: white;
 }
 
@@ -170,7 +175,7 @@ input[type="file"] {
 }
 /* Button Styles */
 .gradient-button {
-  background: linear-gradient(90deg, #6200ea 0%, #4b00b5 100%);
+  background: linear-gradient(90deg, #3498db 0%, #2980b9 100%);
   color: white;
   border: none;
   border-radius: 10px;
@@ -179,6 +184,8 @@ input[type="file"] {
   cursor: pointer;
   transition: background 0.3s;
   background-size: 200% 200%;
+  font-weight: 600;
+  width: 100%;
 }
 
 .gradient-button:hover {
@@ -207,7 +214,7 @@ input[type="file"] {
 /* Responsive Adjustments */
 @media (max-width: 768px) {
   .content {
-    padding: 1rem;
+    padding: 1.5rem;
   }
 
   .col-lg-3 {
@@ -267,22 +274,24 @@ input[type="file"] {
   margin: 0 auto;
   background-color: white;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  padding: 2rem;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  padding: 2.5rem;
 }
 
 .create-nft-form {
-  padding: 1rem;
+  padding: 1.5rem;
 }
 
 .create-nft-form h1 {
   color: #333;
   margin-bottom: 2rem;
-  font-size: 2rem;
+  font-size: 2.2rem;
+  font-weight: 700;
 }
 
 .create-nft-preview {
-  padding: 1rem;
+  padding: 1.5rem;
+  border-left: 1px solid #eee;
 }
 
 .preview-container {
@@ -290,12 +299,14 @@ input[type="file"] {
   border-radius: 8px;
   padding: 1.5rem;
   height: 100%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .preview-container h2 {
   color: #333;
   margin-bottom: 1.5rem;
   font-size: 1.5rem;
+  font-weight: 600;
 }
 
 .image-preview {
@@ -308,6 +319,7 @@ input[type="file"] {
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 2px solid #e5e5e5;
 }
 
 .preview-image {
@@ -317,20 +329,22 @@ input[type="file"] {
 }
 
 .preview-details {
-  padding: 1rem;
+  padding: 1.5rem;
   background-color: white;
   border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .preview-details h3 {
   color: #333;
   margin-bottom: 1rem;
   font-size: 1.2rem;
+  font-weight: 600;
 }
 
 .preview-details p {
   color: #666;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.8rem;
 }
 
 .preview-details .price {
@@ -361,7 +375,7 @@ input[type="file"] {
 
 .create-nft-tabs {
   border-bottom: 1px solid #dee2e6;
-  margin-bottom: 20px;
+  margin-bottom: 25px;
 }
 
 .create-nft-tabs .nav-link {
@@ -369,26 +383,28 @@ input[type="file"] {
   color: #6c757d;
   background: transparent;
   font-weight: 500;
-  padding: 10px 15px;
-  margin-right: 5px;
+  padding: 12px 20px;
+  margin-right: 8px;
   border-radius: 3px 3px 0 0;
+  font-size: 1.1rem;
 }
 
 .create-nft-tabs .nav-link.active {
-  color: #0d6efd;
-  border-bottom: 2px solid #0d6efd;
-  background-color: rgba(13, 110, 253, 0.04);
+  color: #3498db;
+  border-bottom: 3px solid #3498db;
+  background-color: rgba(52, 152, 219, 0.08);
+  font-weight: 600;
 }
 
 .create-nft-tabs .nav-link:hover:not(.active) {
-  color: #0d6efd;
+  color: #3498db;
   border-bottom: 2px solid #dee2e6;
 }
 
 .preview-details .auction-end {
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   color: #6c757d;
-  margin-top: 5px;
+  margin-top: 8px;
 }
 
 .react-datepicker-wrapper {
@@ -398,4 +414,48 @@ input[type="file"] {
 .form-control:disabled {
   background-color: #e9ecef;
   opacity: 0.7;
+}
+
+/* Status and error message styling */
+.status-message {
+  padding: 12px;
+  margin-bottom: 20px;
+  border-radius: 5px;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+  color: #155724;
+  font-weight: 500;
+}
+
+.error-message {
+  padding: 12px;
+  margin-bottom: 20px;
+  border-radius: 5px;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+  font-weight: 500;
+}
+
+/* Form labels */
+.form-label {
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 8px;
+  display: block;
+}
+
+/* Tab content padding */
+.tab-content {
+  padding-top: 25px;
+}
+
+/* Form section spacing */
+.form-section {
+  margin-bottom: 25px;
+}
+
+/* Form group spacing */
+.form-group {
+  margin-bottom: 20px;
 }

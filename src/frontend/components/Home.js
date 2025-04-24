@@ -14,14 +14,15 @@ import backgroundImg from './bgfinal.png';
 import ItemDetailsModal from './ItemDetailsModal';
 import AuctionCard from './AuctionCard';
 import { Card, Button, Spinner } from 'react-bootstrap';
-import { Col } from 'react-bootstrap';
+import { Col, Row } from 'react-bootstrap';
+import MarketplaceService from '../components/MarketplaceService';
 
 const PINATA_BASE_URL = 'https://api.pinata.cloud';
 
 const HomePage = ({ marketplace, walletBalance }) => {
   const navigate = useNavigate();
   const nftCardSectionRef = useRef(null);
-  const { publicKey, isConnected, balanceInXLM } = useWalletConnect();
+  const { publicKey, isConnected, balanceInXLM, signAndSubmitTransaction } = useWalletConnect();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [selectedFilter, setSelectedFilter] = useState(null);
@@ -284,7 +285,22 @@ const HomePage = ({ marketplace, walletBalance }) => {
                   priceType: typeof nftData.price,
                   creator: nftData.creator,
                   assetCode: assetCode,
+                  type: nftData.type || 'fixed_price'
                 });
+                
+                // Determine NFT type
+                let nftType = nftData.type || 'fixed_price';
+                if (nftData.attributes) {
+                  const listingAttr = nftData.attributes.find(attr => attr.trait_type === 'Listing Type');
+                  if (listingAttr) {
+                    if (listingAttr.value.toLowerCase().includes('open for bid')) {
+                      nftType = 'open_bid';
+                    } else if (listingAttr.value.toLowerCase().includes('timed auction')) {
+                      nftType = 'timed_auction';
+                    }
+                  }
+                }
+                
                 nftItems.push({
                   id: itemId,
                   accountId,
@@ -293,11 +309,15 @@ const HomePage = ({ marketplace, walletBalance }) => {
                   image: optimizedImageUrl,
                   creator: accountId,
                   price: nftData.price || '0',
+                  minimumBid: nftData.minimumBid || nftData.price || '0',
+                  startingPrice: nftData.startingPrice || nftData.price || '0',
                   assetCode,
                   likes: itemLikes,
                   itemId,
                   storageType: nftData.storage_type || 'ipfs',
                   isVerifiedOnStellar,
+                  type: nftType,
+                  endTime: nftData.endTime || null
                 });
               } catch (itemError) {
                 console.error(`Error processing Pinata item ${item.ipfs_pin_hash}:`, itemError);
@@ -404,11 +424,15 @@ const HomePage = ({ marketplace, walletBalance }) => {
                       image: optimizedImageUrl,
                       creator: accountId,
                       price: nftData.price || '0',
+                      minimumBid: nftData.minimumBid || nftData.price || '0',
+                      startingPrice: nftData.startingPrice || nftData.price || '0',
                       assetCode,
                       likes: itemLikes,
                       itemId,
                       storageType: nftData.storage_type || 'ipfs',
                       isVerifiedOnStellar: true,
+                      type: nftData.type || 'fixed_price',
+                      endTime: nftData.endTime || null
                     });
                   } catch (metadataError) {
                     console.error(`Error fetching metadata for ${assetCode}:`, metadataError);
@@ -425,6 +449,13 @@ const HomePage = ({ marketplace, walletBalance }) => {
       console.log(`Total NFTs found: ${nftItems.length}`);
 
       let filteredItems = [...nftItems];
+      
+      if (publicKey) {
+        filteredItems = filteredItems.filter(item => {
+          return !(item.type === 'fixed_price' && item.creator === publicKey);
+        });
+      }
+      
       if (selectedFilter && sortOrder) {
         filteredItems.sort((a, b) => {
           if (selectedFilter === 'price') {
@@ -589,6 +620,80 @@ const HomePage = ({ marketplace, walletBalance }) => {
     loadNFTs();
   };
 
+  const handleBuyNFT = async (item) => {
+    if (!isConnected) {
+      toast.error('Please connect your wallet first!', { position: 'top-center' });
+      return;
+    }
+
+    setBuying(item.id);
+    setError(null);
+
+    try {
+      // Determine the appropriate price based on NFT type
+      let validatedPrice;
+      
+      console.log('Buying NFT:', {
+        item,
+        isAuction: item.type === 'timed_auction' || item.type === 'open_bid'
+      });
+      
+      if (item.type === 'fixed_price') {
+        validatedPrice = item.price;
+      } else if (item.type === 'open_bid') {
+        validatedPrice = item.minimumBid;
+        toast.error('Open for Bids NFTs require you to place a bid instead of buying directly', { position: 'top-center' });
+        setBuying(false);
+        return;
+      } else if (item.type === 'timed_auction') {
+        validatedPrice = item.startingPrice || item.price;
+        toast.error('Timed Auction NFTs require you to place a bid instead of buying directly', { position: 'top-center' });
+        setBuying(false);
+        return;
+      } else {
+        // Default fallback
+        validatedPrice = item.price;
+      }
+      
+      // Ensure we have a valid price
+      if (!validatedPrice || isNaN(parseFloat(validatedPrice)) || parseFloat(validatedPrice) <= 0) {
+        throw new Error(`Invalid price: ${validatedPrice || '0'} (must be a positive number)`);
+      }
+      
+      console.log('Buying NFT with params:', {
+        assetCode: item.assetCode,
+        buyer: publicKey,
+        price: validatedPrice,
+        creator: item.creator,
+        type: item.type
+      });
+      
+      await MarketplaceService.buyNFT(
+        item.assetCode,
+        publicKey,
+        validatedPrice,
+        item.creator,
+        signAndSubmitTransaction
+      );
+      
+      toast.success(`Successfully purchased ${item.name} for ${validatedPrice} XLM!`, {
+        position: 'top-center',
+      });
+      
+      // Refresh NFTs after purchase
+      setTimeout(() => {
+        loadNFTs();
+      }, 3000);
+      
+    } catch (error) {
+      const errorMessage = `Failed to buy NFT: ${error.message}`;
+      setError(errorMessage);
+      toast.error(errorMessage, { position: 'top-center' });
+    } finally {
+      setBuying(false);
+    }
+  };
+
   return (
     <div className="home-container">
       <div className="gradient-section">
@@ -646,10 +751,23 @@ const HomePage = ({ marketplace, walletBalance }) => {
                 items
                   .filter((item) => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
                   .map((item, idx) => {
+                    console.log('Rendering NFT item:', {
+                      name: item.name,
+                      type: item.type,
+                      price: item.price,
+                      minimumBid: item.minimumBid,
+                      startingPrice: item.startingPrice
+                    });
+                    
                     const isAuctionOrBid = item.type === 'open_bid' || item.type === 'timed_auction';
                     
+                    // Don't show NFTs owned by the current user
+                    if (item.creator === publicKey && item.type === 'fixed_price') {
+                      return null;
+                    }
+                    
                     return (
-                      <Col key={idx} className="overflow-hidden">
+                      <div key={idx} className="nft-grid-item">
                         {isAuctionOrBid ? (
                           <AuctionCard 
                             nft={item} 
@@ -663,10 +781,12 @@ const HomePage = ({ marketplace, walletBalance }) => {
                               <Card.Title>{item.name}</Card.Title>
                               <Card.Text>{item.description}</Card.Text>
                               <div className="d-flex justify-content-between align-items-center">
-                                <div className="price-container">{item.price} XLM</div>
+                                <div className="price-tag">{item.price} XLM</div>
                                 <Button 
-                                  onClick={() => handleViewDetails(item)}
-                                  disabled={item.accountId === publicKey || !isConnected || buying}>
+                                  onClick={() => handleBuyNFT(item)}
+                                  disabled={item.creator === publicKey || !isConnected || buying === item.id}
+                                  className="buy-button"
+                                >
                                   {buying === item.id ? (
                                     <Spinner animation="border" size="sm" />
                                   ) : (
@@ -677,7 +797,7 @@ const HomePage = ({ marketplace, walletBalance }) => {
                             </Card.Body>
                           </Card>
                         )}
-                      </Col>
+                      </div>
                     );
                   })
               ) : (

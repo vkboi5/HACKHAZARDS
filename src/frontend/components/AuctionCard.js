@@ -4,19 +4,23 @@ import { useWalletConnect } from './WalletConnectProvider';
 import { toast } from 'react-hot-toast';
 import BidService from './BidService';
 import AuctionService from './AuctionService';
+import { FaGavel, FaTimes, FaListUl, FaCheck, FaRegClock } from 'react-icons/fa';
 
 const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
   const { publicKey, isConnected, signAndSubmitTransaction } = useWalletConnect();
   const [bidAmount, setBidAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingBids, setLoadingBids] = useState(false);
   const [bids, setBids] = useState([]);
   const [showBidsModal, setShowBidsModal] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(null);
   const [auctionEnded, setAuctionEnded] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [highestBid, setHighestBid] = useState(null);
+  const [bidError, setBidError] = useState(null);
 
   useEffect(() => {
+    console.log('AuctionCard received NFT:', nft);
     setIsOwner(publicKey === nft.creator);
     fetchBids();
     checkAuctionStatus();
@@ -31,19 +35,27 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
 
   const fetchBids = async () => {
     try {
-      setLoading(true);
+      setLoadingBids(true);
+      console.log(`Fetching bids for NFT: ${nft.assetCode} issued by ${nft.creator}`);
       const bidsList = await BidService.getBidsForNFT(nft.assetCode, nft.creator);
+      console.log('Bids received:', bidsList);
       setBids(bidsList);
       
       // Set highest bid
       if (bidsList.length > 0) {
-        setHighestBid(bidsList[0]);
+        // Make sure the bid has a bidderPublicKey before setting as highest bid
+        if (bidsList[0] && bidsList[0].bidderPublicKey) {
+          setHighestBid(bidsList[0]);
+        } else {
+          console.warn('Highest bid is missing bidderPublicKey, not setting as highest bid', bidsList[0]);
+        }
       }
       
-      setLoading(false);
+      setLoadingBids(false);
     } catch (error) {
       console.error('Error fetching bids:', error);
-      setLoading(false);
+      toast.error('Failed to load bids. Please try again.');
+      setLoadingBids(false);
     }
   };
 
@@ -52,6 +64,7 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
       try {
         // Check if auction has auction info
         const auctionDetails = await AuctionService.getAuctionDetails(nft.assetCode, nft.creator);
+        console.log('Auction details:', auctionDetails);
         if (auctionDetails && auctionDetails.endTime) {
           const endTime = new Date(auctionDetails.endTime);
           const now = new Date();
@@ -103,22 +116,28 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
 
   const handleBid = async () => {
     try {
+      setBidError(null);
+      
       if (!isConnected) {
+        setBidError('Please connect your wallet first');
         toast.error('Please connect your wallet first');
         return;
       }
       
       if (!bidAmount || isNaN(parseFloat(bidAmount)) || parseFloat(bidAmount) <= 0) {
+        setBidError('Please enter a valid bid amount');
         toast.error('Please enter a valid bid amount');
         return;
       }
       
       if (nft.type === 'open_bid' && nft.minimumBid && parseFloat(bidAmount) < parseFloat(nft.minimumBid)) {
+        setBidError(`Bid must be at least ${nft.minimumBid} XLM`);
         toast.error(`Bid must be at least ${nft.minimumBid} XLM`);
         return;
       }
       
       if (highestBid && parseFloat(bidAmount) <= parseFloat(highestBid.bidAmount)) {
+        setBidError(`Bid must be higher than the current highest bid (${highestBid.bidAmount} XLM)`);
         toast.error(`Bid must be higher than the current highest bid (${highestBid.bidAmount} XLM)`);
         return;
       }
@@ -126,6 +145,13 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
       setLoading(true);
       
       // Place bid
+      console.log('Placing bid with params:', {
+        nftAssetCode: nft.assetCode,
+        creator: nft.creator,
+        bidder: publicKey,
+        amount: bidAmount
+      });
+      
       const result = await BidService.placeBid(
         nft.assetCode,
         nft.creator,
@@ -134,6 +160,7 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
         signAndSubmitTransaction
       );
       
+      console.log('Bid placed successfully:', result);
       toast.success('Bid placed successfully!');
       setBidAmount('');
       
@@ -148,6 +175,7 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
       setLoading(false);
     } catch (error) {
       console.error('Error placing bid:', error);
+      setBidError(error.message || 'Failed to place bid');
       toast.error(error.message || 'Failed to place bid');
       setLoading(false);
     }
@@ -168,6 +196,7 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
       setLoading(true);
       
       // Accept bid
+      console.log('Accepting bid:', bid);
       const result = await BidService.acceptBid(
         nft.assetCode,
         publicKey,
@@ -176,11 +205,14 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
         signAndSubmitTransaction
       );
       
+      console.log('Bid accepted result:', result);
       toast.success('Bid accepted successfully!');
       
       // Refresh NFTs
       if (refreshNFTs) {
-        refreshNFTs();
+        setTimeout(() => {
+          refreshNFTs();
+        }, 3000);
       }
       
       setLoading(false);
@@ -214,14 +246,16 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
       );
       
       if (result.winner) {
-        toast.success(`Auction finalized! NFT sold to ${result.winner.substring(0, 10)}... for ${result.amount} XLM`);
+        toast.success(`Auction finalized! NFT sold to ${result.winner && result.winner.substring(0, 10)}... for ${result.amount} XLM`);
       } else {
         toast.info('Auction finalized with no bids');
       }
       
       // Refresh NFTs
       if (refreshNFTs) {
-        refreshNFTs();
+        setTimeout(() => {
+          refreshNFTs();
+        }, 3000);
       }
       
       setLoading(false);
@@ -257,7 +291,9 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
       
       // Refresh NFTs
       if (refreshNFTs) {
-        refreshNFTs();
+        setTimeout(() => {
+          refreshNFTs();
+        }, 3000);
       }
       
       setLoading(false);
@@ -276,7 +312,11 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
         return (
           <>
             <Badge bg="primary">Timed Auction</Badge>
-            {timeRemaining && <div className="time-remaining">Time left: {timeRemaining}</div>}
+            {timeRemaining && (
+              <div className="time-remaining">
+                <FaRegClock className="me-2" /> {timeRemaining}
+              </div>
+            )}
           </>
         );
       }
@@ -287,8 +327,23 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
     }
   };
 
+  const renderStatusRibbon = () => {
+    if (nft.type === 'timed_auction') {
+      if (auctionEnded) {
+        return <div className="status-ribbon ribbon-ended">Auction Ended</div>;
+      } else {
+        return <div className="status-ribbon ribbon-timed">Timed Auction</div>;
+      }
+    } else if (nft.type === 'open_bid') {
+      return <div className="status-ribbon ribbon-open">Open for Bids</div>;
+    } else {
+      return <div className="status-ribbon ribbon-fixed">Fixed Price</div>;
+    }
+  };
+
   return (
     <Card className="mb-4 auction-card">
+      {renderStatusRibbon()}
       <Card.Img variant="top" src={nft.image} alt={nft.name} className="card-img-top" />
       <Card.Body>
         <Card.Title>{nft.name}</Card.Title>
@@ -300,7 +355,11 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
             <small className="text-muted">Asset: {nft.assetCode}</small>
           </div>
         </div>
-        <Card.Text className="mb-2">{nft.description}</Card.Text>
+        <Card.Text className="mb-2 description-text">
+          {nft.description?.length > 100 
+            ? `${nft.description.substring(0, 100)}...` 
+            : nft.description || 'No description provided'}
+        </Card.Text>
         
         {nft.type === 'fixed_price' && (
           <div className="price-tag">Price: {nft.price} XLM</div>
@@ -319,16 +378,16 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
             Highest Bid: {highestBid.bidAmount} XLM
             <br />
             <small className="text-muted">
-              by: {highestBid.bidderPublicKey.substring(0, 8)}...
+              by: {highestBid.bidderPublicKey && highestBid.bidderPublicKey.substring(0, 8)}...
             </small>
           </div>
         )}
 
-        {!isOwner && (nft.type === 'open_bid' || (nft.type === 'timed_auction' && !auctionEnded)) && (
-          <div className="bid-form mt-3">
+        {!isOwner && (nft.type === 'open_bid' || (nft.type === 'timed_auction' && !auctionEnded)) && nft.type !== 'fixed_price' && (
+          <div className="bid-form">
             <Form.Group>
               <Form.Label>Your Bid (XLM)</Form.Label>
-              <Row>
+              <Row className="g-2">
                 <Col xs={8}>
                   <Form.Control
                     type="number"
@@ -339,13 +398,14 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
                     min={nft.minimumBid || "0.0000001"}
                     step="0.0000001"
                   />
+                  {bidError && <div className="text-danger mt-1 small">{bidError}</div>}
                 </Col>
                 <Col xs={4}>
                   <Button 
                     variant="primary" 
                     onClick={handleBid} 
                     disabled={loading || !isConnected}
-                    className="w-100"
+                    className="w-100 d-flex justify-content-center align-items-center"
                   >
                     {loading ? <Spinner animation="border" size="sm" /> : 'Bid'}
                   </Button>
@@ -355,15 +415,21 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
           </div>
         )}
 
-        <div className="d-flex justify-content-between mt-3">
-          <Button
-            variant="outline-primary"
-            size="sm"
-            onClick={() => setShowBidsModal(true)}
-            disabled={loading}
-          >
-            View Bids ({bids.length})
-          </Button>
+        <div className="d-flex justify-content-between mt-auto pt-2">
+          {(nft.type === 'open_bid' || nft.type === 'timed_auction') && (
+            <Button
+              variant="outline-primary"
+              size="sm"
+              onClick={() => {
+                setShowBidsModal(true);
+                fetchBids(); // Refresh bids when modal is opened
+              }}
+              disabled={loading}
+              className="px-2 py-1"
+            >
+              <FaListUl className="me-1" /> Bids ({bids.length})
+            </Button>
+          )}
           
           {isOwner && (
             <>
@@ -373,8 +439,9 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
                   size="sm"
                   onClick={() => handleAcceptBid(bids[0])}
                   disabled={loading}
+                  className="px-2 py-1"
                 >
-                  Accept Highest Bid
+                  <FaCheck className="me-1" /> Accept
                 </Button>
               )}
               
@@ -384,8 +451,9 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
                   size="sm"
                   onClick={handleFinalizeAuction}
                   disabled={loading}
+                  className="px-2 py-1"
                 >
-                  Finalize Auction
+                  <FaGavel className="me-1" /> Finalize
                 </Button>
               )}
               
@@ -395,8 +463,9 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
                   size="sm"
                   onClick={handleCancelAuction}
                   disabled={loading}
+                  className="px-2 py-1"
                 >
-                  Cancel Auction
+                  <FaTimes className="me-1" /> Cancel
                 </Button>
               )}
             </>
@@ -405,31 +474,35 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
       </Card.Body>
 
       {/* Bids Modal */}
-      <Modal show={showBidsModal} onHide={() => setShowBidsModal(false)}>
+      <Modal show={showBidsModal} onHide={() => setShowBidsModal(false)} centered>
         <Modal.Header closeButton>
           <Modal.Title>Bids for {nft.name}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          {loading ? (
+          {loadingBids ? (
             <div className="text-center p-4">
-              <Spinner animation="border" />
-              <p>Loading bids...</p>
+              <Spinner animation="border" variant="primary" />
+              <p className="mt-3">Loading bids...</p>
             </div>
           ) : bids.length === 0 ? (
-            <p className="text-center">No bids yet</p>
+            <div className="text-center p-4">
+              <FaGavel size={40} className="text-muted mb-3" />
+              <p className="lead">No bids yet</p>
+              <p className="text-muted">Be the first to place a bid!</p>
+            </div>
           ) : (
             <div className="bids-list">
               {bids.map((bid, index) => (
-                <div key={bid.id} className="bid-item p-2 mb-2 border-bottom">
-                  <div className="d-flex justify-content-between">
+                <div key={bid.id || index} className="bid-item p-3 mb-2">
+                  <div className="d-flex justify-content-between align-items-center">
                     <div>
-                      <div>Bid: {bid.bidAmount} XLM</div>
-                      <small className="text-muted">
-                        From: {bid.bidderPublicKey.substring(0, 10)}...
+                      <div className="fw-bold">{bid.bidAmount} XLM</div>
+                      <small className="text-muted d-block">
+                        From: {bid.bidderPublicKey && bid.bidderPublicKey.substring(0, 10)}...
                       </small>
                       {bid.timestamp && (
                         <small className="d-block text-muted">
-                          {new Date(bid.timestamp).toLocaleString()}
+                          <FaRegClock className="me-1" size={12} /> {new Date(bid.timestamp).toLocaleString()}
                         </small>
                       )}
                     </div>
@@ -440,7 +513,7 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
                         onClick={() => handleAcceptBid(bid)}
                         disabled={loading}
                       >
-                        Accept
+                        <FaCheck className="me-1" /> Accept
                       </Button>
                     )}
                   </div>
