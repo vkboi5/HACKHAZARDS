@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, Row, Col, Form, Button, Alert, Spinner } from 'react-bootstrap';
+import { Container, Row, Col, Form, Button, Alert, Spinner, Tabs, Tab, InputGroup } from 'react-bootstrap';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { useWalletConnect } from './WalletConnectProvider';
 import axios from 'axios';
 import './Create.css';
 import { toast } from 'react-hot-toast';
+import BidService from './BidService';
+import AuctionService from './AuctionService';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 const Create = () => {
   const navigate = useNavigate();
@@ -15,6 +19,8 @@ const Create = () => {
     name: '',
     description: '',
     assetCode: '',
+    minimumBid: '',
+    auctionEndDate: new Date(new Date().getTime() + 24 * 60 * 60 * 1000), // Default to 24 hours from now
   });
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -28,6 +34,7 @@ const Create = () => {
     timeout: 60000,
   });
   const [envVarsLoaded, setEnvVarsLoaded] = useState(false);
+  const [activeTab, setActiveTab] = useState('fixed-price');
 
   // Validate price
   const validatePrice = (price) => {
@@ -712,6 +719,736 @@ const Create = () => {
           name: '',
           description: '',
           assetCode: '',
+          minimumBid: '',
+          auctionEndDate: new Date(new Date().getTime() + 24 * 60 * 60 * 1000), // Default to 24 hours from now
+        });
+        setSelectedFile(null);
+        setPreviewUrl(null);
+        navigate('/');
+      } else {
+        console.error('NFT issuance not found. Transaction details:', transactionDetails);
+        console.error('Effects:', effects.records);
+        throw new Error('NFT creation succeeded but verification failed. Check transaction effects.');
+      }
+    } catch (error) {
+      console.error('NFT creation error:', error);
+      let errorMessage = 'Failed to create NFT: ';
+      if (error.response?.data?.extras?.result_codes) {
+        const codes = error.response.data.extras.result_codes;
+        errorMessage += `${codes.transaction || 'Unknown error'}`;
+        if (codes.operations) {
+          const opErrors = codes.operations.map((code, index) => {
+            switch (code) {
+              case 'op_malformed':
+                return `Operation ${index + 1} is malformed (check asset code format)`;
+              case 'op_no_trust':
+                return `Operation ${index + 1} requires a trustline`;
+              case 'op_underfunded':
+                return `Operation ${index + 1} lacks sufficient funds`;
+              default:
+                return `Operation ${index + 1} failed: ${code}`;
+            }
+          });
+          errorMessage += `\nOperation errors:\n${opErrors.join('\n')}`;
+        }
+      } else {
+        errorMessage += error.message || 'Unknown error occurred';
+      }
+      setErrorMsg(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+      setStatusMsg('');
+    }
+  }
+
+  // Create NFT with Open for Bids
+  async function createOpenBidNFT() {
+    try {
+      setIsLoading(true);
+      setErrorMsg('');
+      setStatusMsg('Starting NFT creation process...');
+
+      // Validate form inputs
+      const { name, description, minimumBid, assetCode } = formInput;
+      if (!name || !description || !minimumBid || !assetCode || !selectedFile) {
+        throw new Error('Please fill all fields and select an image');
+      }
+      if (!isConnected || !publicKey) {
+        throw new Error('Please connect your Stellar wallet');
+      }
+
+      // Define validateAndNormalizeAssetCode function within the scope
+      const validateAndNormalizeAssetCode = (rawAssetCode) => {
+        const assetCode = rawAssetCode.replace(/[^a-zA-Z0-9]/g, '').trim().toUpperCase();
+        if (!assetCode) {
+          throw new Error('Asset code is required');
+        }
+        if (assetCode.length < 1 || assetCode.length > 12) {
+          throw new Error('Asset code must be between 1 and 12 characters');
+        }
+        if (!/^[A-Z0-9]+$/.test(assetCode)) {
+          throw new Error('Asset code must contain only uppercase letters and numbers');
+        }
+        if (/XLM/i.test(assetCode)) {
+          throw new Error('Asset code cannot contain "XLM"');
+        }
+        if (assetCode.length <= 4) {
+          if (!/^[A-Z][A-Z0-9]{0,3}$/.test(assetCode)) {
+            throw new Error('Short asset codes (1-4 characters) must start with a letter');
+          }
+        } else {
+          if (!/^[A-Z][A-Z0-9]{4,11}$/.test(assetCode)) {
+            throw new Error('Long asset codes (5-12 characters) must start with a letter');
+          }
+        }
+        console.log('Asset code validated:', {
+          original: rawAssetCode,
+          normalized: assetCode,
+          length: assetCode.length,
+          type: assetCode.length <= 4 ? 'ALPHANUM4' : 'ALPHANUM12',
+        });
+        return assetCode;
+      };
+
+      // Validate and normalize asset code
+      const validatedAssetCode = validateAndNormalizeAssetCode(assetCode);
+
+      // Validate and format minimum bid price
+      const validatedMinimumBid = validatePrice(minimumBid);
+
+      // Upload image to IPFS
+      setStatusMsg('Uploading image to IPFS...');
+      const imageResult = await uploadImage(selectedFile);
+      if (!imageResult.success) {
+        throw new Error('Failed to upload image to IPFS');
+      }
+      console.log('Image uploaded as ipfs:', imageResult.url);
+
+      // Prepare and upload metadata
+      setStatusMsg('Preparing NFT metadata...');
+      const metadata = {
+        name,
+        description,
+        image: imageResult.url,
+        minimumBid: validatedMinimumBid,
+        creator: publicKey,
+        assetCode: validatedAssetCode,
+        type: 'open_bid',
+        created_at: new Date().toISOString(),
+        attributes: [
+          {
+            trait_type: 'Asset Code',
+            value: validatedAssetCode,
+          },
+          {
+            trait_type: 'Listing Type',
+            value: 'Open for Bids',
+          },
+        ],
+      };
+      console.log('Metadata being prepared:', metadata);
+
+      const metadataResult = await uploadMetadata(metadata);
+      if (!metadataResult.success) {
+        throw new Error('Failed to upload metadata to IPFS');
+      }
+      console.log('Metadata uploaded as ipfs:', metadataResult.url);
+
+      // Create the NFT using Stellar
+      setStatusMsg('Creating NFT on Stellar...');
+
+      const networkConfig = {
+        network: process.env.REACT_APP_STELLAR_NETWORK || 'TESTNET',
+        passphrase:
+          process.env.REACT_APP_STELLAR_NETWORK === 'TESTNET'
+            ? StellarSdk.Networks.TESTNET
+            : StellarSdk.Networks.PUBLIC,
+      };
+      console.log('Using network:', networkConfig.network);
+
+      // Initialize Stellar server
+      const server = new StellarSdk.Horizon.Server(process.env.REACT_APP_HORIZON_URL);
+      const sourceAccount = await server.loadAccount(publicKey);
+
+      // Check account balance
+      const xlmBalance = sourceAccount.balances.find((b) => b.asset_type === 'native');
+      if (!xlmBalance) {
+        throw new Error('Unable to determine XLM balance');
+      }
+      const balance = parseFloat(xlmBalance.balance);
+      const requiredBalance = 1.5; // Base reserve + buffer for operations
+      if (balance < requiredBalance) {
+        throw new Error(
+          `Insufficient XLM balance. At least ${requiredBalance} XLM required (current: ${balance.toFixed(7)} XLM)`
+        );
+      }
+
+      // Create the NFT asset
+      const nftAsset = new StellarSdk.Asset(validatedAssetCode, publicKey);
+
+      // Build transaction operations
+      const operations = [];
+
+      // Payment operation to issue the NFT
+      console.log('Adding payment operation');
+      operations.push(
+        StellarSdk.Operation.payment({
+          destination: publicKey,
+          asset: nftAsset,
+          amount: '1.0000000'
+        })
+      );
+
+      // ManageData operation for metadata
+      if (metadataResult?.hash) {
+        console.log('Adding manageData operation');
+        const metadataValue = Buffer.from(metadataResult.hash);
+        if (metadataValue.length <= 64) {
+          operations.push(
+            StellarSdk.Operation.manageData({
+              name: `nft_${validatedAssetCode}_metadata`,
+              value: metadataValue,
+            })
+          );
+        } else {
+          console.warn('Metadata value exceeds 64 bytes, skipping metadata operation');
+        }
+      }
+
+      // Add flag to indicate this is an 'open for bids' NFT
+      operations.push(
+        StellarSdk.Operation.manageData({
+          name: `nft_${validatedAssetCode}_type`,
+          value: Buffer.from('open_bid'),
+        })
+      );
+
+      // Add minimum bid as data entry
+      operations.push(
+        StellarSdk.Operation.manageData({
+          name: `nft_${validatedAssetCode}_min_bid`,
+          value: Buffer.from(validatedMinimumBid),
+        })
+      );
+
+      // Define submitTransaction function within the scope
+      const submitTransaction = async (operations, description) => {
+        try {
+          const currentAccount = await server.loadAccount(publicKey);
+          console.log(`Account sequence before ${description}:`, currentAccount.sequenceNumber());
+
+          const tx = new StellarSdk.TransactionBuilder(currentAccount, {
+            fee: StellarSdk.BASE_FEE,
+            networkPassphrase: networkConfig.passphrase,
+          }).setTimeout(180);
+
+          operations.forEach((op, index) => {
+            console.log(`Adding operation ${index + 1} to ${description}:`, {
+              type: op.type,
+              ...(op.type === 'payment'
+                ? {
+                    asset: op.asset?.getCode(),
+                    amount: op.amount,
+                    destination: op.destination,
+                  }
+                : op.type === 'manageData'
+                ? {
+                    name: op.name,
+                    value: op.value ? op.value.toString() : null,
+                  }
+                : op.type === 'manageSellOffer'
+                ? {
+                    selling: op.selling.getCode(),
+                    buying: op.buying.getCode(),
+                    amount: op.amount,
+                    price: op.price,
+                  }
+                : {}),
+            });
+            tx.addOperation(op);
+          });
+
+          const built = tx.build();
+          console.log(`${description} details:`, {
+            operations: built.operations.map((op) => ({
+              type: op.type,
+              source: op.source || 'default',
+              ...(op.type === 'payment' && op.asset
+                ? {
+                    asset: op.asset.getCode(),
+                    amount: op.amount,
+                    destination: op.destination,
+                  }
+                : op.type === 'manageData'
+                ? {
+                    name: op.name,
+                    value: op.value ? op.value.toString() : null,
+                  }
+                : op.type === 'manageSellOffer'
+                ? {
+                    selling: op.selling.getCode(),
+                    buying: op.buying.getCode(),
+                    amount: op.amount,
+                    price: op.price,
+                  }
+                : {}),
+            })),
+            sequence: built.sequence,
+            source: built.source,
+            fee: built.fee,
+          });
+
+          const xdr = built.toXDR();
+          console.log(`${description} XDR:`, xdr);
+
+          const result = await signAndSubmitTransaction(xdr);
+          console.log(`${description} successful:`, result);
+
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const accountAfter = await server.loadAccount(publicKey);
+          console.log(`Account sequence after ${description}:`, accountAfter.sequenceNumber());
+
+          return result;
+        } catch (error) {
+          console.error(`${description} failed:`, error);
+          if (error.response?.data?.extras?.result_codes) {
+            const codes = error.response.data.extras.result_codes;
+            let errorDetail = `${description} failed: ${codes.transaction || 'Unknown error'}`;
+            if (codes.operations) {
+              const opErrors = codes.operations.map((code, index) =>
+                `Operation ${index + 1}: ${code}`
+              );
+              errorDetail += ` - Operations: [${opErrors.join(', ')}]`;
+            }
+            throw new Error(errorDetail);
+          }
+          throw error;
+        }
+      };
+
+      // Submit transaction
+      console.log('Submitting NFT creation transaction');
+      const result = await submitTransaction(operations, 'NFT creation (Open for Bids)');
+      console.log('Transaction submitted successfully:', result);
+
+      setStatusMsg('NFT created successfully!');
+
+      // Verify creation by checking transaction effects
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      const transactionDetails = await server.transactions().transaction(result.hash).call();
+      const effects = await server.effects().forTransaction(result.hash).call();
+
+      const paymentEffect = effects.records.find(
+        (effect) =>
+          effect.type === 'account_credited' &&
+          effect.account === publicKey &&
+          effect.asset_code === validatedAssetCode &&
+          effect.asset_issuer === publicKey
+      );
+
+      if (paymentEffect) {
+        console.log('NFT issuance verified:', {
+          amount: paymentEffect.amount,
+          asset: `${paymentEffect.asset_code}:${paymentEffect.asset_issuer}`,
+        });
+        setStatusMsg('NFT created and verified successfully!');
+        toast.success('NFT created and open for bids!');
+
+        // Reset form and navigate
+        setFormInput({
+          price: '',
+          name: '',
+          description: '',
+          assetCode: '',
+          minimumBid: '',
+          auctionEndDate: new Date(new Date().getTime() + 24 * 60 * 60 * 1000),
+        });
+        setSelectedFile(null);
+        setPreviewUrl(null);
+        navigate('/');
+      } else {
+        console.error('NFT issuance not found. Transaction details:', transactionDetails);
+        console.error('Effects:', effects.records);
+        throw new Error('NFT creation succeeded but verification failed. Check transaction effects.');
+      }
+    } catch (error) {
+      console.error('NFT creation error:', error);
+      let errorMessage = 'Failed to create NFT: ';
+      if (error.response?.data?.extras?.result_codes) {
+        const codes = error.response.data.extras.result_codes;
+        errorMessage += `${codes.transaction || 'Unknown error'}`;
+        if (codes.operations) {
+          const opErrors = codes.operations.map((code, index) => {
+            switch (code) {
+              case 'op_malformed':
+                return `Operation ${index + 1} is malformed (check asset code format)`;
+              case 'op_no_trust':
+                return `Operation ${index + 1} requires a trustline`;
+              case 'op_underfunded':
+                return `Operation ${index + 1} lacks sufficient funds`;
+              default:
+                return `Operation ${index + 1} failed: ${code}`;
+            }
+          });
+          errorMessage += `\nOperation errors:\n${opErrors.join('\n')}`;
+        }
+      } else {
+        errorMessage += error.message || 'Unknown error occurred';
+      }
+      setErrorMsg(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+      setStatusMsg('');
+    }
+  }
+
+  // Create NFT with Timed Auction
+  async function createTimedAuctionNFT() {
+    try {
+      setIsLoading(true);
+      setErrorMsg('');
+      setStatusMsg('Starting NFT creation process...');
+
+      // Validate form inputs
+      const { name, description, price, assetCode, auctionEndDate } = formInput;
+      if (!name || !description || !price || !assetCode || !selectedFile || !auctionEndDate) {
+        throw new Error('Please fill all fields and select an image');
+      }
+      if (!isConnected || !publicKey) {
+        throw new Error('Please connect your Stellar wallet');
+      }
+
+      // Validate auction end date
+      const now = new Date();
+      if (auctionEndDate <= now) {
+        throw new Error('Auction end date must be in the future');
+      }
+
+      // Define validateAndNormalizeAssetCode function within the scope
+      const validateAndNormalizeAssetCode = (rawAssetCode) => {
+        const assetCode = rawAssetCode.replace(/[^a-zA-Z0-9]/g, '').trim().toUpperCase();
+        if (!assetCode) {
+          throw new Error('Asset code is required');
+        }
+        if (assetCode.length < 1 || assetCode.length > 12) {
+          throw new Error('Asset code must be between 1 and 12 characters');
+        }
+        if (!/^[A-Z0-9]+$/.test(assetCode)) {
+          throw new Error('Asset code must contain only uppercase letters and numbers');
+        }
+        if (/XLM/i.test(assetCode)) {
+          throw new Error('Asset code cannot contain "XLM"');
+        }
+        if (assetCode.length <= 4) {
+          if (!/^[A-Z][A-Z0-9]{0,3}$/.test(assetCode)) {
+            throw new Error('Short asset codes (1-4 characters) must start with a letter');
+          }
+        } else {
+          if (!/^[A-Z][A-Z0-9]{4,11}$/.test(assetCode)) {
+            throw new Error('Long asset codes (5-12 characters) must start with a letter');
+          }
+        }
+        console.log('Asset code validated:', {
+          original: rawAssetCode,
+          normalized: assetCode,
+          length: assetCode.length,
+          type: assetCode.length <= 4 ? 'ALPHANUM4' : 'ALPHANUM12',
+        });
+        return assetCode;
+      };
+
+      // Validate and normalize asset code
+      const validatedAssetCode = validateAndNormalizeAssetCode(assetCode);
+
+      // Validate and format price
+      const validatedPrice = validatePrice(price);
+
+      // Upload image to IPFS
+      setStatusMsg('Uploading image to IPFS...');
+      const imageResult = await uploadImage(selectedFile);
+      if (!imageResult.success) {
+        throw new Error('Failed to upload image to IPFS');
+      }
+      console.log('Image uploaded as ipfs:', imageResult.url);
+
+      // Prepare and upload metadata
+      setStatusMsg('Preparing NFT metadata...');
+      const metadata = {
+        name,
+        description,
+        image: imageResult.url,
+        startingPrice: validatedPrice,
+        creator: publicKey,
+        assetCode: validatedAssetCode,
+        type: 'timed_auction',
+        startTime: now.toISOString(),
+        endTime: auctionEndDate.toISOString(),
+        created_at: new Date().toISOString(),
+        attributes: [
+          {
+            trait_type: 'Asset Code',
+            value: validatedAssetCode,
+          },
+          {
+            trait_type: 'Listing Type',
+            value: 'Timed Auction',
+          },
+          {
+            trait_type: 'Auction End',
+            value: auctionEndDate.toISOString(),
+          },
+        ],
+      };
+      console.log('Metadata being prepared:', metadata);
+
+      const metadataResult = await uploadMetadata(metadata);
+      if (!metadataResult.success) {
+        throw new Error('Failed to upload metadata to IPFS');
+      }
+      console.log('Metadata uploaded as ipfs:', metadataResult.url);
+
+      // Create the NFT using Stellar
+      setStatusMsg('Creating NFT on Stellar...');
+
+      const networkConfig = {
+        network: process.env.REACT_APP_STELLAR_NETWORK || 'TESTNET',
+        passphrase:
+          process.env.REACT_APP_STELLAR_NETWORK === 'TESTNET'
+            ? StellarSdk.Networks.TESTNET
+            : StellarSdk.Networks.PUBLIC,
+      };
+      console.log('Using network:', networkConfig.network);
+
+      // Initialize Stellar server
+      const server = new StellarSdk.Horizon.Server(process.env.REACT_APP_HORIZON_URL);
+      const sourceAccount = await server.loadAccount(publicKey);
+
+      // Check account balance
+      const xlmBalance = sourceAccount.balances.find((b) => b.asset_type === 'native');
+      if (!xlmBalance) {
+        throw new Error('Unable to determine XLM balance');
+      }
+      const balance = parseFloat(xlmBalance.balance);
+      const requiredBalance = 1.5; // Base reserve + buffer for operations
+      if (balance < requiredBalance) {
+        throw new Error(
+          `Insufficient XLM balance. At least ${requiredBalance} XLM required (current: ${balance.toFixed(7)} XLM)`
+        );
+      }
+
+      // Create the NFT asset
+      const nftAsset = new StellarSdk.Asset(validatedAssetCode, publicKey);
+
+      // Build transaction operations
+      const operations = [];
+
+      // Payment operation to issue the NFT
+      console.log('Adding payment operation');
+      operations.push(
+        StellarSdk.Operation.payment({
+          destination: publicKey,
+          asset: nftAsset,
+          amount: '1.0000000'
+        })
+      );
+
+      // ManageData operation for metadata
+      if (metadataResult?.hash) {
+        console.log('Adding manageData operation');
+        const metadataValue = Buffer.from(metadataResult.hash);
+        if (metadataValue.length <= 64) {
+          operations.push(
+            StellarSdk.Operation.manageData({
+              name: `nft_${validatedAssetCode}_metadata`,
+              value: metadataValue,
+            })
+          );
+        } else {
+          console.warn('Metadata value exceeds 64 bytes, skipping metadata operation');
+        }
+      }
+
+      // Add flag to indicate this is a 'timed auction' NFT
+      operations.push(
+        StellarSdk.Operation.manageData({
+          name: `nft_${validatedAssetCode}_type`,
+          value: Buffer.from('timed_auction'),
+        })
+      );
+
+      // Add auction end time as data entry
+      operations.push(
+        StellarSdk.Operation.manageData({
+          name: `nft_${validatedAssetCode}_end_time`,
+          value: Buffer.from(auctionEndDate.toISOString()),
+        })
+      );
+
+      // Add starting price as data entry
+      operations.push(
+        StellarSdk.Operation.manageData({
+          name: `nft_${validatedAssetCode}_start_price`,
+          value: Buffer.from(validatedPrice),
+        })
+      );
+
+      // Create an initial sell offer at the starting price
+      operations.push(
+        StellarSdk.Operation.manageSellOffer({
+          selling: nftAsset,
+          buying: StellarSdk.Asset.native(),
+          amount: '1',
+          price: validatedPrice,
+        })
+      );
+
+      // Define submitTransaction function within the scope
+      const submitTransaction = async (operations, description) => {
+        try {
+          const currentAccount = await server.loadAccount(publicKey);
+          console.log(`Account sequence before ${description}:`, currentAccount.sequenceNumber());
+
+          const tx = new StellarSdk.TransactionBuilder(currentAccount, {
+            fee: StellarSdk.BASE_FEE,
+            networkPassphrase: networkConfig.passphrase,
+          }).setTimeout(180);
+
+          operations.forEach((op, index) => {
+            console.log(`Adding operation ${index + 1} to ${description}:`, {
+              type: op.type,
+              ...(op.type === 'payment'
+                ? {
+                    asset: op.asset?.getCode(),
+                    amount: op.amount,
+                    destination: op.destination,
+                  }
+                : op.type === 'manageData'
+                ? {
+                    name: op.name,
+                    value: op.value ? op.value.toString() : null,
+                  }
+                : op.type === 'manageSellOffer'
+                ? {
+                    selling: op.selling.getCode(),
+                    buying: op.buying.getCode(),
+                    amount: op.amount,
+                    price: op.price,
+                  }
+                : {}),
+            });
+            tx.addOperation(op);
+          });
+
+          const built = tx.build();
+          console.log(`${description} details:`, {
+            operations: built.operations.map((op) => ({
+              type: op.type,
+              source: op.source || 'default',
+              ...(op.type === 'payment' && op.asset
+                ? {
+                    asset: op.asset.getCode(),
+                    amount: op.amount,
+                    destination: op.destination,
+                  }
+                : op.type === 'manageData'
+                ? {
+                    name: op.name,
+                    value: op.value ? op.value.toString() : null,
+                  }
+                : op.type === 'manageSellOffer'
+                ? {
+                    selling: op.selling.getCode(),
+                    buying: op.buying.getCode(),
+                    amount: op.amount,
+                    price: op.price,
+                  }
+                : {}),
+            })),
+            sequence: built.sequence,
+            source: built.source,
+            fee: built.fee,
+          });
+
+          const xdr = built.toXDR();
+          console.log(`${description} XDR:`, xdr);
+
+          const result = await signAndSubmitTransaction(xdr);
+          console.log(`${description} successful:`, result);
+
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const accountAfter = await server.loadAccount(publicKey);
+          console.log(`Account sequence after ${description}:`, accountAfter.sequenceNumber());
+
+          return result;
+        } catch (error) {
+          console.error(`${description} failed:`, error);
+          if (error.response?.data?.extras?.result_codes) {
+            const codes = error.response.data.extras.result_codes;
+            let errorDetail = `${description} failed: ${codes.transaction || 'Unknown error'}`;
+            if (codes.operations) {
+              const opErrors = codes.operations.map((code, index) =>
+                `Operation ${index + 1}: ${code}`
+              );
+              errorDetail += ` - Operations: [${opErrors.join(', ')}]`;
+            }
+            throw new Error(errorDetail);
+          }
+          throw error;
+        }
+      };
+
+      // Submit transaction
+      console.log('Submitting NFT creation transaction');
+      const result = await submitTransaction(operations, 'NFT creation (Timed Auction)');
+      console.log('Transaction submitted successfully:', result);
+
+      setStatusMsg('NFT created successfully!');
+
+      // Verify creation by checking transaction effects
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      const transactionDetails = await server.transactions().transaction(result.hash).call();
+      const effects = await server.effects().forTransaction(result.hash).call();
+
+      const paymentEffect = effects.records.find(
+        (effect) =>
+          effect.type === 'account_credited' &&
+          effect.account === publicKey &&
+          effect.asset_code === validatedAssetCode &&
+          effect.asset_issuer === publicKey
+      );
+
+      if (paymentEffect) {
+        console.log('NFT issuance verified:', {
+          amount: paymentEffect.amount,
+          asset: `${paymentEffect.asset_code}:${paymentEffect.asset_issuer}`,
+        });
+        setStatusMsg('NFT created and verified successfully!');
+        toast.success('NFT created with timed auction!');
+
+        // Store auction data in IPFS using AuctionService
+        try {
+          await AuctionService.createAuction(
+            validatedAssetCode,
+            publicKey,
+            validatedPrice,
+            auctionEndDate.toISOString(),
+            signAndSubmitTransaction
+          );
+        } catch (auctionError) {
+          console.error('Failed to store auction data:', auctionError);
+          // Non-critical error, so we don't throw
+        }
+
+        // Reset form and navigate
+        setFormInput({
+          price: '',
+          name: '',
+          description: '',
+          assetCode: '',
+          minimumBid: '',
+          auctionEndDate: new Date(new Date().getTime() + 24 * 60 * 60 * 1000),
         });
         setSelectedFile(null);
         setPreviewUrl(null);
@@ -786,18 +1523,6 @@ const Create = () => {
               </Form.Group>
 
               <Form.Group className="mb-3">
-                <Form.Label>Price (XLM)</Form.Label>
-                <Form.Control
-                  type="number"
-                  placeholder="NFT Price in XLM"
-                  step="0.0000001"
-                  min="0"
-                  value={formInput.price}
-                  onChange={e => setFormInput({ ...formInput, price: e.target.value })}
-                />
-              </Form.Group>
-
-              <Form.Group className="mb-3">
                 <Form.Label>Asset Code (max 12 characters)</Form.Label>
                 <Form.Control
                   type="text"
@@ -839,22 +1564,140 @@ const Create = () => {
                 )}
               </Form.Group>
 
-              <Button
-                onClick={createNFT}
-                disabled={
-                  isLoading ||
-                  !formInput.name ||
-                  !formInput.description ||
-                  !formInput.price ||
-                  !formInput.assetCode ||
-                  !selectedFile ||
-                  !envVarsLoaded
-                }
-                className="d-flex align-items-center justify-content-center gap-2"
+              <Tabs 
+                activeKey={activeTab} 
+                onSelect={(k) => setActiveTab(k)}
+                className="mb-4 create-nft-tabs"
               >
-                {isLoading && <Spinner animation="border" size="sm" />}
-                {isLoading ? 'Creating...' : 'Create NFT'}
-              </Button>
+                <Tab eventKey="fixed-price" title="Fixed Price">
+                  <Form.Group className="mt-3 mb-3">
+                    <Form.Label>Price (XLM)</Form.Label>
+                    <Form.Control
+                      type="number"
+                      placeholder="NFT Price in XLM"
+                      step="0.0000001"
+                      min="0"
+                      value={formInput.price}
+                      onChange={e => setFormInput({ ...formInput, price: e.target.value })}
+                    />
+                    <Form.Text className="text-muted">
+                      Set a fixed price to sell your NFT immediately
+                    </Form.Text>
+                  </Form.Group>
+
+                  <Button
+                    onClick={createNFT}
+                    disabled={
+                      isLoading ||
+                      !formInput.name ||
+                      !formInput.description ||
+                      !formInput.price ||
+                      !formInput.assetCode ||
+                      !selectedFile ||
+                      !envVarsLoaded
+                    }
+                    className="d-flex align-items-center justify-content-center gap-2"
+                  >
+                    {isLoading && <Spinner animation="border" size="sm" />}
+                    {isLoading ? 'Creating...' : 'Create Fixed Price NFT'}
+                  </Button>
+                </Tab>
+
+                <Tab eventKey="open-for-bids" title="Open for Bids">
+                  <div className="mt-3 mb-3">
+                    <p>Create an NFT that's open for bids from any buyer. You can accept any bid at any time.</p>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Minimum Bid (XLM)</Form.Label>
+                      <Form.Control
+                        type="number"
+                        placeholder="Minimum acceptable bid in XLM"
+                        step="0.0000001"
+                        min="0"
+                        value={formInput.minimumBid}
+                        onChange={e => setFormInput({ ...formInput, minimumBid: e.target.value })}
+                      />
+                      <Form.Text className="text-muted">
+                        Set a minimum bid to ensure your NFT sells at a reasonable price
+                      </Form.Text>
+                    </Form.Group>
+
+                    <Button
+                      onClick={createOpenBidNFT}
+                      disabled={
+                        isLoading ||
+                        !formInput.name ||
+                        !formInput.description ||
+                        !formInput.minimumBid ||
+                        !formInput.assetCode ||
+                        !selectedFile ||
+                        !envVarsLoaded
+                      }
+                      className="d-flex align-items-center justify-content-center gap-2"
+                    >
+                      {isLoading && <Spinner animation="border" size="sm" />}
+                      {isLoading ? 'Creating...' : 'Create Open Bid NFT'}
+                    </Button>
+                  </div>
+                </Tab>
+
+                <Tab eventKey="timed-auction" title="Timed Auction">
+                  <div className="mt-3 mb-3">
+                    <p>Create an NFT auction that automatically ends at a specific time.</p>
+                    
+                    <Form.Group className="mb-3">
+                      <Form.Label>Starting Price (XLM)</Form.Label>
+                      <Form.Control
+                        type="number"
+                        placeholder="Starting price in XLM"
+                        step="0.0000001"
+                        min="0"
+                        value={formInput.price}
+                        onChange={e => setFormInput({ ...formInput, price: e.target.value })}
+                      />
+                      <Form.Text className="text-muted">
+                        Set a starting price for your auction
+                      </Form.Text>
+                    </Form.Group>
+
+                    <Form.Group className="mb-3">
+                      <Form.Label>Auction End Date</Form.Label>
+                      <br />
+                      <DatePicker
+                        selected={formInput.auctionEndDate}
+                        onChange={(date) => setFormInput({ ...formInput, auctionEndDate: date })}
+                        showTimeSelect
+                        timeFormat="HH:mm"
+                        timeIntervals={15}
+                        timeCaption="time"
+                        dateFormat="MMMM d, yyyy h:mm aa"
+                        minDate={new Date()}
+                        className="form-control"
+                      />
+                      <Form.Text className="text-muted">
+                        Select when your auction will end
+                      </Form.Text>
+                    </Form.Group>
+
+                    <Button
+                      onClick={createTimedAuctionNFT}
+                      disabled={
+                        isLoading ||
+                        !formInput.name ||
+                        !formInput.description ||
+                        !formInput.price ||
+                        !formInput.assetCode ||
+                        !selectedFile ||
+                        !formInput.auctionEndDate ||
+                        !envVarsLoaded
+                      }
+                      className="d-flex align-items-center justify-content-center gap-2"
+                    >
+                      {isLoading && <Spinner animation="border" size="sm" />}
+                      {isLoading ? 'Creating...' : 'Create Timed Auction NFT'}
+                    </Button>
+                  </div>
+                </Tab>
+              </Tabs>
 
               {!envVarsLoaded && (
                 <Alert variant="warning" className="mt-3">
@@ -890,7 +1733,22 @@ const Create = () => {
               <div className="preview-details">
                 <h3>{formInput.name || 'NFT Name'}</h3>
                 <p>{formInput.description || 'NFT Description'}</p>
-                <p className="price">{formInput.price ? `${formInput.price} XLM` : '0 XLM'}</p>
+                
+                {activeTab === 'fixed-price' && (
+                  <p className="price">{formInput.price ? `${formInput.price} XLM` : '0 XLM'}</p>
+                )}
+                
+                {activeTab === 'open-for-bids' && (
+                  <p className="price">Minimum Bid: {formInput.minimumBid ? `${formInput.minimumBid} XLM` : '0 XLM'}</p>
+                )}
+                
+                {activeTab === 'timed-auction' && (
+                  <>
+                    <p className="price">Starting Price: {formInput.price ? `${formInput.price} XLM` : '0 XLM'}</p>
+                    <p className="auction-end">Ends: {formInput.auctionEndDate?.toLocaleString() || 'Not set'}</p>
+                  </>
+                )}
+                
                 {formInput.assetCode && <p className="asset-code">Asset Code: {formInput.assetCode}</p>}
               </div>
             </div>
