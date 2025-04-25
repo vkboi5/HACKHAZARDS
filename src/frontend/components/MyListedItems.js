@@ -7,7 +7,7 @@ import { FaTimes, FaWhatsapp, FaTwitter, FaFacebook, FaLinkedin, FaPinterest, Fa
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './MyListedItems.css';
-import loaderGif from '../../assets/images/ui/loader.gif';
+import loaderGif from './loader.gif';
 import { Container, Row, Col, Card, Button, Alert, Spinner } from 'react-bootstrap';
 
 // Function to render sold items
@@ -63,226 +63,283 @@ export default function MyListedItems() {
         process.env.REACT_APP_HORIZON_URL || 'https://horizon-testnet.stellar.org'
       );
 
-      // List of asset codes to exclude - common test tokens
-      const excludedAssetCodes = ['AQUA', 'BTC', 'ETH', 'USDC', 'USDT', 'asdasd'];
-      
-      // Load user's account
+      // Get account details
       const account = await stellarServer.loadAccount(publicKey);
-      const listedItems = [];
-      const soldItems = [];
 
-      console.log('Loading NFTs for account:', publicKey);
-      console.log('Account balances:', account.balances);
-      
-      // Fetch all offers for the account first to avoid multiple API calls
-      let allOffers = [];
-      try {
-        const offersResponse = await stellarServer.offers().forAccount(publicKey).limit(100).call();
-        allOffers = offersResponse.records || [];
-        console.log(`Found ${allOffers.length} active offers for account`, allOffers);
-      } catch (offersError) {
-        console.error('Error fetching offers:', offersError);
-      }
+      // Get all offers for this account
+      const offers = await stellarServer.offers().forAccount(publicKey).call();
 
-      // Build a map of asset offers for quick lookup
+      // Create a map of offers for quick lookup
       const offersMap = {};
-      allOffers.forEach(offer => {
-        if (offer.selling.asset_type !== 'native' && offer.buying.asset_type === 'native') {
-          const key = `${offer.selling.asset_code}-${offer.selling.asset_issuer}`;
-          offersMap[key] = {
-            price: offer.price,
+      offers.records.forEach(offer => {
+        if (offer.selling.asset_type !== 'native') {
+          const assetCode = offer.selling.asset_code;
+          const issuerPublicKey = offer.selling.asset_issuer;
+          const key = `${assetCode}-${issuerPublicKey}`;
+          
+          if (!offersMap[key]) {
+            offersMap[key] = [];
+          }
+          
+          offersMap[key].push({
+            id: offer.id,
             amount: offer.amount,
-            id: offer.id
-          };
-          console.log(`Offer for ${key}: price=${offer.price}, amount=${offer.amount}, id=${offer.id}`);
+            price: offer.price,
+          });
         }
       });
 
-      // Fetch all NFT asset holders (accounts that hold NFTs issued by this user)
-      let assetHolders = [];
-      try {
-        // Only fetch if there are assets issued by this account
-        if (account.balances.some(b => b.asset_type !== 'native' && b.asset_issuer === publicKey)) {
-          const nftHolders = await stellarServer.accounts()
-            .forSigner(publicKey)  // Accounts related to this user
-            .limit(50)
-            .call();
-          assetHolders = nftHolders.records || [];
-          console.log(`Found ${assetHolders.length} accounts holding assets issued by this account`);
-        }
-      } catch (holdersError) {
-        console.error('Error fetching asset holders:', holdersError);
-      }
+      const listedItemsArray = [];
+      const soldItemsArray = [];
 
-      // Helper to check if an asset is owned by someone else
-      const isAssetHeldByOthers = (assetCode) => {
-        return assetHolders.some(
-          holder => holder.id !== publicKey && 
-            holder.balances.some(
-              b => b.asset_type !== 'native' && 
-                   b.asset_code === assetCode && 
-                   b.asset_issuer === publicKey &&
-                   parseFloat(b.balance) > 0
-            )
-        );
-      };
+      // Check manageData entries for NFT metadata
+      if (account.data_attr) {
+        console.log('Found manageData entries:', Object.keys(account.data_attr));
+        for (const [key, value] of Object.entries(account.data_attr)) {
+          // Skip non-NFT entries and issued flags
+          if (!key.startsWith('nft_') || key.endsWith('_issued')) {
+            console.log(`Skipping non-NFT or issued entry: ${key}`);
+            continue;
+          }
 
-      // Helper to check if this is a valid NFT asset rather than a standard token
-      const isValidNftAsset = (assetCode, issuerPublicKey, isCreator, metadata) => {
-        // Skip excluded asset codes (common test tokens)
-        if (excludedAssetCodes.includes(assetCode)) {
-          console.log(`Skipping excluded asset: ${assetCode}`);
-          return false;
-        }
-        
-        // If this is a created NFT with metadata, it's probably valid
-        if (isCreator && metadata && (metadata.name || metadata.image)) {
-          return true;
-        }
-        
-        // If it has NFT-like metadata but isn't in the exclude list, consider it valid
-        if (metadata && metadata.image) {
-          return true;
-        }
-        
-        // For assets without metadata, only include if they have active offers
-        // or if we're the creator
-        if (isCreator) {
-          return true;
-        }
+          console.log(`Processing manageData entry: ${key}`);
+          let assetCode;
+          let metadataValue;
 
-        const assetKey = `${assetCode}-${issuerPublicKey}`;
-        return offersMap[assetKey] !== undefined;
-      };
+          // Handle metadata entries (e.g., nft_CODE_metadata)
+          if (key.endsWith('_metadata')) {
+            assetCode = key.replace('nft_', '').replace('_metadata', '');
+            metadataValue = value;
+            console.log(`Found metadata entry for NFT: ${assetCode}`);
+          } else {
+            // Handle base entries (e.g., nft_CODE)
+            assetCode = key.replace('nft_', '');
+            metadataValue = value;
+            // Check for a corresponding metadata entry
+            const metadataKey = `nft_${assetCode}_metadata`;
+            if (account.data_attr[metadataKey]) {
+              metadataValue = account.data_attr[metadataKey];
+              console.log(`Found and using metadata entry value for NFT: ${assetCode}`);
+            } else {
+              console.log(`Using base entry value for NFT: ${assetCode}`);
+            }
+          }
 
-      // Iterate through balances to find all non-native assets (both created and held NFTs)
-      for (const balance of account.balances) {
-        if (balance.asset_type !== 'native') {
+          // Validate asset code
+          if (!assetCode || assetCode.length > 12 || assetCode.length < 1) {
+            console.log(`Invalid asset code: ${assetCode}, skipping`);
+            continue;
+          }
+
+          // Check if the NFT was created by this account
+          const isCreated = account.data_attr[`nft_${assetCode}_issued`] !== undefined ||
+                           account.data_attr[`nft_${assetCode}`] !== undefined ||
+                           key === `nft_${assetCode}_metadata`;
+
+          console.log(`NFT Creation check for ${assetCode}:`, {
+            hasIssuedFlag: account.data_attr[`nft_${assetCode}_issued`] !== undefined,
+            hasBaseEntry: account.data_attr[`nft_${assetCode}`] !== undefined,
+            isMetadataEntry: key === `nft_${assetCode}_metadata`,
+            finalIsCreated: isCreated,
+            assetCode,
+            key
+          });
+
+          if (!isCreated) {
+            console.log(`Skipping NFT ${assetCode} - not created by this account`);
+            continue;
+          }
+
           try {
-            const assetCode = balance.asset_code;
-            const issuerPublicKey = balance.asset_issuer;
-            const asset = new StellarSdk.Asset(assetCode, issuerPublicKey);
-            const isCreator = issuerPublicKey === publicKey;
+            // Decode the base64 metadata value
+            const decodedValue = Buffer.from(metadataValue, 'base64').toString('utf-8');
+            console.log(`Decoded metadata value for ${assetCode}: ${decodedValue}`);
+
+            if (!decodedValue) {
+              console.log(`No valid decoded value for NFT ${assetCode}, skipping`);
+              continue;
+            }
+
+            // Find the corresponding asset in balances
+            const assetEntry = account.balances.find(
+              (b) => b.asset_type !== 'native' && 
+                     b.asset_code === assetCode
+            );
+
+            console.log(`Processing NFT ${assetCode}:`, {
+              hasMetadataInAccount: true,
+              hasIssuedFlag: account.data_attr[`nft_${assetCode}_issued`] !== undefined,
+              inBalances: assetEntry !== undefined,
+              assetIssuer: assetEntry ? assetEntry.asset_issuer : publicKey,
+              currentUser: publicKey
+            });
+
+            // Set issuer and balance information
+            let issuerPublicKey = publicKey; // Default to current user as issuer
+            let assetBalance = "0"; // Default balance
+
+            if (assetEntry) {
+              console.log(`Found matching asset in balances: ${assetCode}, balance: ${assetEntry.balance}, issuer: ${assetEntry.asset_issuer}`);
+              issuerPublicKey = assetEntry.asset_issuer;
+              assetBalance = assetEntry.balance;
+            } else {
+              console.log(`No balance entry found for ${assetCode}, treating as newly created NFT`);
+            }
+
             const assetKey = `${assetCode}-${issuerPublicKey}`;
             const hasOffer = offersMap[assetKey] !== undefined;
-            
-            console.log(`Processing asset: ${assetCode}:${issuerPublicKey}, balance: ${balance.balance}, isCreator: ${isCreator}, hasOffer: ${hasOffer}`);
+            const asset = new StellarSdk.Asset(assetCode, issuerPublicKey);
 
-            // Skip if balance is zero and not the creator (no need to show)
-            if (parseFloat(balance.balance) === 0 && !isCreator) {
-              console.log(`Skipping asset ${assetCode} with zero balance`);
-              continue;
-            }
-            
-            // Skip excluded asset codes before fetching metadata
-            if (excludedAssetCodes.includes(assetCode)) {
-              console.log(`Skipping excluded asset: ${assetCode}`);
-              continue;
-            }
-
-            // Fetch the issuer account to get metadata
-            const issuerAccount = issuerPublicKey === publicKey 
-              ? account 
-              : await stellarServer.loadAccount(issuerPublicKey);
-
-            // Fetch metadata
-            let metadata = {};
-            try {
-              const metadataKey = `nft_${assetCode}_metadata`;
-              if (issuerAccount.data_attr && issuerAccount.data_attr[metadataKey]) {
-                const metadataHash = Buffer.from(issuerAccount.data_attr[metadataKey], 'base64').toString();
-                console.log(`Found metadata hash for ${assetCode}:`, metadataHash);
-                const metadataUrl = metadataHash.startsWith('http')
-                  ? metadataHash
-                  : `${process.env.REACT_APP_IPFS_GATEWAY}${metadataHash}`;
-                console.log(`Fetching metadata from:`, metadataUrl);
-                const response = await axios.get(metadataUrl, { timeout: 10000 });
-                metadata = response.data;
-                console.log(`Metadata for ${assetCode}:`, metadata);
-              } else {
-                console.warn(`No metadata found for asset ${assetCode}`);
-              }
-            } catch (metadataError) {
-              console.error(`Error fetching metadata for ${assetCode}`, metadataError);
-            }
-            
-            // Skip if it's not a valid NFT asset
-            if (!isValidNftAsset(assetCode, issuerPublicKey, isCreator, metadata)) {
-              console.log(`Skipping non-NFT asset: ${assetCode}`);
-              continue;
-            }
-
-            // Check if the NFT is sold to someone else (if user is the creator)
-            let isSold = false;
-            if (isCreator) {
-              isSold = isAssetHeldByOthers(assetCode);
-              console.log(`Asset ${assetCode} isSold:`, isSold);
-            }
-
-            // Get the current price from active offers
-            let currentPrice = '0';
-            let hasActiveSellOffer = false;
-            
-            if (hasOffer) {
-              hasActiveSellOffer = true;
-              currentPrice = offersMap[assetKey].price;
-              console.log(`Asset ${assetCode} has active offer with price:`, currentPrice);
-            }
-
-            // If there's no active offer but metadata has a price, use that as fallback
-            if (currentPrice === '0' && metadata.price) {
-              currentPrice = metadata.price;
-              console.log(`Using metadata price for ${assetCode}:`, currentPrice);
-            }
-
-            // Construct item data
-            const item = {
-              id: `${assetCode}-${issuerPublicKey}`,
-              name: metadata.name || assetCode,
-              description: metadata.description || 'No description available',
-              image: metadata.image && metadata.image.startsWith('http')
-                ? metadata.image
-                : metadata.image
-                ? `${process.env.REACT_APP_IPFS_GATEWAY}${metadata.image}`
-                : 'https://via.placeholder.com/300',
-              price: currentPrice,
-              assetCode,
-              issuer: issuerPublicKey,
-              balance: balance.balance,
-              isCreator,
-              hasActiveSellOffer,
-              offerId: hasOffer ? offersMap[assetKey].id : null
+            // Initialize metadata
+            let detailedMetadata = { 
+              name: assetCode, 
+              image: 'https://via.placeholder.com/300', 
+              description: '' 
             };
 
-            // For creator assets: show in "sold" if sold to someone else
-            // For held assets: show in "listed" if user has an active sell offer, else consider it a collectible
-            if (isCreator && isSold) {
-              soldItems.push(item);
-            } else if (hasActiveSellOffer || (isCreator && !isSold)) {
-              listedItems.push(item);
+            // Parse metadata
+            const metadata = parseMetadata(decodedValue, assetCode);
+
+            // Fetch detailed metadata if a URL is present
+            if (metadata.url) {
+              console.log(`Fetching metadata for ${assetCode} from URL: ${metadata.url}`);
+              try {
+                const response = await axios.get(metadata.url, {
+                  timeout: 10000,
+                  validateStatus: status => status === 200
+                });
+
+                if (response.data) {
+                  if (typeof response.data === 'object' && (response.data.name || response.data.image)) {
+                    detailedMetadata = {
+                      name: response.data.name || metadata.name || assetCode,
+                      description: response.data.description || '',
+                      image: response.data.image || metadata.url,
+                      creator: response.data.creator || publicKey
+                    };
+
+                    // Handle IPFS image URLs
+                    if (detailedMetadata.image && !detailedMetadata.image.startsWith('http')) {
+                      const gateway = process.env.REACT_APP_IPFS_GATEWAY || 'https://ipfs.io/ipfs/';
+                      const formattedGateway = gateway.replace(/\/+$/, '') + '/';
+                      detailedMetadata.image = `${formattedGateway}${detailedMetadata.image}`;
+                    }
+                  } else {
+                    detailedMetadata.image = metadata.url;
+                    detailedMetadata.name = metadata.name || assetCode;
+                  }
+                  console.log(`Successfully processed metadata for ${assetCode}:`, detailedMetadata);
+                }
+              } catch (ipfsError) {
+                console.error(`Failed to fetch IPFS metadata for ${assetCode}:`, ipfsError.message);
+                detailedMetadata.image = metadata.url;
+                detailedMetadata.name = metadata.name || assetCode;
+              }
             } else {
-              // This is a collectible
-              listedItems.push(item);
+              console.log(`No URL found for ${assetCode}, using fallback metadata`);
+              detailedMetadata.name = metadata.name || assetCode;
             }
-          } catch (error) {
-            console.error(`Error processing asset ${balance.asset_code}`, error);
+
+            // Determine status: listed (has offer), sold (balance is 0), or not listed
+            const isSold = assetBalance === '0.0000000' || parseFloat(assetBalance) === 0;
+            console.log(`Status for ${assetCode}: isSold=${isSold}, hasOffer=${hasOffer}`);
+            const item = {
+              id: assetCode,
+              name: detailedMetadata.name,
+              description: detailedMetadata.description,
+              image: detailedMetadata.image,
+              price: hasOffer ? offersMap[assetKey][0].price : '0',
+              offerId: hasOffer ? offersMap[assetKey][0].id : null,
+              asset: asset,
+              balance: assetBalance,
+              issuer: issuerPublicKey,
+              isCreator: true,
+              hasActiveSellOffer: hasOffer
+            };
+
+            console.log(`Categorizing NFT ${assetCode}:`, {
+              balance: assetBalance,
+              isSold: isSold,
+              hasOffer: hasOffer
+            });
+
+            // Add to appropriate array
+            if (isSold) {
+              console.log(`Adding ${assetCode} to sold items (balance is 0)`);
+              soldItemsArray.push({ ...item, price: '0' });
+            } else {
+              console.log(`Adding ${assetCode} to listed items (hasOffer=${hasOffer})`);
+              listedItemsArray.push(item);
+            }
+          } catch (err) {
+            console.error(`Error processing NFT ${key}:`, err.message);
           }
         }
+      } else {
+        console.log('No manageData entries found in account');
       }
 
-      console.log(`Found ${listedItems.length} listed NFTs and ${soldItems.length} sold NFTs`);
-      setListedItems(listedItems);
-      setSoldItems(soldItems);
+      console.log(`Final listed items:`, listedItemsArray);
+      console.log(`Final sold items:`, soldItemsArray);
+      setListedItems(listedItemsArray);
+      setSoldItems(soldItemsArray);
       setLoading(false);
 
-      if (listedItems.length === 0 && soldItems.length === 0) {
-        setError('No created or owned NFTs found.');
-      }
     } catch (error) {
-      console.error('Error loading listed items:', error);
-      setError(`Failed to load NFTs: ${error.message}`);
+      console.error('Error loading listed items:', error.message);
+      setError('Failed to load your listed items. Please try again later.');
       setLoading(false);
     }
+  };
+
+  // Parse metadata string
+  const parseMetadata = (metadataStr, assetCode) => {
+    const metadata = { name: assetCode, url: '' };
+    console.log(`Parsing metadata string for ${assetCode}: ${metadataStr}`);
+
+    // Check if it's a direct IPFS CID (starting with 'bafk', 'Qm', or 'bafy')
+    if (metadataStr.match(/^(bafk|Qm|bafy)/i)) {
+      console.log(`Metadata string is an IPFS CID: ${metadataStr}`);
+      const gateway = process.env.REACT_APP_IPFS_GATEWAY || 'https://ipfs.io/ipfs/';
+      const formattedGateway = gateway.replace(/\/+$/, '') + '/';
+      metadata.url = `${formattedGateway}${metadataStr}`;
+      console.log(`Constructed IPFS URL: ${metadata.url}`);
+      return metadata;
+    }
+
+    // Try parsing as "Name: ..., URL: ..." format
+    const nameMatch = metadataStr.match(/Name:\s*([^,]+)(?:,|$)/i) || metadataStr.match(/name:\s*([^,]+)(?:,|$)/i);
+    const urlMatch = metadataStr.match(/URL:\s*([^\s]+)(?:,|$)/i) || metadataStr.match(/url:\s*([^\s]+)(?:,|$)/i);
+
+    if (nameMatch) {
+      metadata.name = nameMatch[1].trim();
+      console.log(`Extracted name: ${metadata.name}`);
+    }
+
+    if (urlMatch) {
+      metadata.url = urlMatch[1].trim();
+      if (!metadata.url.startsWith('http')) {
+        const gateway = process.env.REACT_APP_IPFS_GATEWAY || 'https://ipfs.io/ipfs/';
+        const formattedGateway = gateway.replace(/\/+$/, '') + '/';
+        metadata.url = `${formattedGateway}${metadata.url}`;
+      }
+      console.log(`Extracted URL: ${metadata.url}`);
+    } else {
+      // Fallback: check if metadata contains any text that looks like an IPFS CID
+      const cidMatch = metadataStr.match(/(bafk|Qm|bafy)[a-zA-Z0-9]+/i);
+      if (cidMatch) {
+        const cid = cidMatch[0];
+        console.log(`Found possible IPFS CID in metadata: ${cid}`);
+        const gateway = process.env.REACT_APP_IPFS_GATEWAY || 'https://ipfs.io/ipfs/';
+        const formattedGateway = gateway.replace(/\/+$/, '') + '/';
+        metadata.url = `${formattedGateway}${cid}`;
+        console.log(`Constructed IPFS URL: ${metadata.url}`);
+      } else {
+        console.warn('No URL found in metadata and not an IPFS CID');
+      }
+    }
+
+    return metadata;
   };
 
   // Function to delete an item (remove sell offer)
@@ -293,7 +350,7 @@ export default function MyListedItems() {
         process.env.REACT_APP_HORIZON_URL || 'https://horizon-testnet.stellar.org'
       );
       const account = await stellarServer.loadAccount(publicKey);
-      const asset = new StellarSdk.Asset(item.assetCode, item.issuer);
+      const asset = new StellarSdk.Asset(item.id, item.issuer);
 
       console.log('Deleting item:', item);
 
@@ -306,7 +363,7 @@ export default function MyListedItems() {
         const offers = await stellarServer.offers().forAccount(publicKey).call();
         const sellOffer = offers.records.find(
           (offer) =>
-            offer.selling.asset_code === item.assetCode &&
+            offer.selling.asset_code === item.id &&
             offer.selling.asset_issuer === item.issuer &&
             offer.buying.asset_type === 'native'
         );
@@ -373,7 +430,7 @@ export default function MyListedItems() {
       await loadListedItems();
       setItemToDelete(null);
     } catch (error) {
-      console.error('Error deleting item:', error);
+      console.error('Error deleting item:', error.message);
       toast.error(`Failed to delete item: ${error.message}`, {
         position: 'top-center',
       });
