@@ -222,48 +222,97 @@ export function WalletConnectProvider({ children }) {
         }
       }
 
-      // For LOBSTR wallet, we need to ensure the transaction is properly formatted
-      if (walletMethod === LOBSTR_ID) {
-        try {
-          // Parse the XDR to ensure it's valid
-          const transaction = StellarSdk.TransactionBuilder.fromXDR(
-            xdr,
-            getNetworkConfig().networkPassphrase
-          );
-
-          // Rebuild the transaction to ensure proper formatting
-          const rebuiltXdr = transaction.toXDR();
-          
-          const { signedTxXdr } = await kit.signTransaction(rebuiltXdr, {
-            networkPassphrase: getNetworkConfig().networkPassphrase
-          });
-
-          if (!signedTxXdr) {
-            throw new Error('No signed transaction received from wallet');
-          }
-
-          return { signedXDR: signedTxXdr };
-        } catch (parseError) {
-          console.error('Error parsing transaction:', parseError);
-          throw new Error('Invalid transaction format. Please try again.');
+      // Get the session state to ensure it's active
+      try {
+        const sessionState = await kit.getSessionState();
+        console.log('WalletConnect session state:', sessionState);
+        
+        if (!sessionState || !sessionState.isConnected) {
+          console.log('Session disconnected, attempting reconnect...');
+          await kit.openModal();
         }
-      } else {
-        // For other wallets, use the standard signing process
-        const { signedTxXdr } = await kit.signTransaction(xdr, {
-          networkPassphrase: getNetworkConfig().networkPassphrase
-        });
-
-        if (!signedTxXdr) {
-          throw new Error('No signed transaction received from wallet');
-        }
-
-        return { signedXDR: signedTxXdr };
+      } catch (sessionError) {
+        console.error('Session check error:', sessionError);
+        // Continue with signing attempt even if session check fails
       }
+
+      // Try to sign the transaction with retry logic
+      let maxRetries = 2;
+      let retryCount = 0;
+      let lastError = null;
+      
+      while (retryCount <= maxRetries) {
+        try {
+          // For LOBSTR wallet, we need to ensure the transaction is properly formatted
+          if (walletMethod === LOBSTR_ID) {
+            try {
+              // Parse the XDR to ensure it's valid
+              const transaction = StellarSdk.TransactionBuilder.fromXDR(
+                xdr,
+                getNetworkConfig().networkPassphrase
+              );
+
+              // Rebuild the transaction to ensure proper formatting
+              const rebuiltXdr = transaction.toXDR();
+              
+              const { signedTxXdr } = await kit.signTransaction(rebuiltXdr, {
+                networkPassphrase: getNetworkConfig().networkPassphrase
+              });
+
+              if (!signedTxXdr) {
+                throw new Error('No signed transaction received from wallet');
+              }
+
+              return { signedXDR: signedTxXdr };
+            } catch (parseError) {
+              console.error('Error parsing transaction:', parseError);
+              throw new Error('Invalid transaction format. Please try again.');
+            }
+          } else {
+            // For other wallets, use the standard signing process
+            const { signedTxXdr } = await kit.signTransaction(xdr, {
+              networkPassphrase: getNetworkConfig().networkPassphrase
+            });
+
+            if (!signedTxXdr) {
+              throw new Error('No signed transaction received from wallet');
+            }
+
+            return { signedXDR: signedTxXdr };
+          }
+        } catch (err) {
+          lastError = err;
+          console.error(`Transaction signing attempt ${retryCount + 1} failed:`, err);
+          
+          // If user explicitly cancelled, don't retry
+          if (err.message.includes('Transaction cancelled by the user') || 
+              err.message.includes('User rejected')) {
+            throw new Error('Transaction signing was cancelled by the user');
+          }
+          
+          // Try to reconnect before retrying
+          if (retryCount < maxRetries) {
+            console.log(`Attempting reconnection before retry ${retryCount + 1}...`);
+            try {
+              await kit.openModal();
+              // Wait a short time before retrying
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            } catch (reconnectErr) {
+              console.error('Reconnection attempt failed:', reconnectErr);
+            }
+          }
+          
+          retryCount++;
+        }
+      }
+      
+      // If we exhausted all retries, throw the last error
+      throw lastError || new Error('Failed to sign transaction after multiple attempts');
     } catch (err) {
       console.error('Transaction signing error:', err);
       // Provide more specific error messages
-      if (err.message.includes('User rejected')) {
-        throw new Error('Transaction signing was cancelled by the user.');
+      if (err.message.includes('User rejected') || err.message.includes('cancelled by the user')) {
+        throw new Error('Transaction cancelled by the user');
       } else if (err.message.includes('Invalid transaction')) {
         throw new Error('Invalid transaction format. Please try again.');
       } else if (err.message.includes('connection key is missing') || err.message.includes('Failed to reconnect')) {
@@ -287,7 +336,16 @@ export function WalletConnectProvider({ children }) {
       }
 
       // First sign the transaction
-      const { signedXDR } = await signTransaction(xdr);
+      let signResult;
+      try {
+        signResult = await signTransaction(xdr);
+      } catch (signError) {
+        console.error('Transaction signing failed:', signError);
+        // Rethrow the signing error to be handled by the caller
+        throw signError;
+      }
+      
+      const { signedXDR } = signResult;
       
       if (!signedXDR) {
         throw new Error('Failed to sign transaction - no signed XDR returned');
@@ -306,6 +364,12 @@ export function WalletConnectProvider({ children }) {
         console.log('Submitting transaction to the Stellar network...');
         const result = await server.submitTransaction(transaction);
         console.log('Transaction submitted successfully:', result.hash);
+        
+        // Trigger a refresh of account data after successful transaction
+        setTimeout(() => {
+          loadAccountBalance(publicKey, server);
+        }, 2000);
+        
         return { hash: result.hash };
       } catch (submitError) {
         console.error('Transaction submission error:', submitError);
