@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Button, Form, Alert, Tabs, Tab, Spinner } from 'react-bootstrap';
-import { useStellarWallet } from './StellarWalletProvider';
+import { useWalletConnect } from './WalletConnectProvider';
 import axios from 'axios';
 import './StellarWallet.css';
 import * as StellarSdk from '@stellar/stellar-sdk';
@@ -9,7 +9,7 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 const server = new StellarSdk.Horizon.Server('https://horizon-testnet.stellar.org');
 
 export default function StellarSetup() {
-  const { publicKey, isConnected, error, connectWallet, disconnectWallet, getAccountDetails, signTransaction } = useStellarWallet();
+  const { publicKey, isConnected, error, connectWallet, disconnectWallet, getAccountDetails, signTransaction } = useWalletConnect();
   const [activeTab, setActiveTab] = useState('setup');
   const [accountDetails, setAccountDetails] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -185,12 +185,20 @@ export default function StellarSetup() {
       setLoading(true);
       setNftCreationStatus('Creating NFT...');
 
-      if (!publicKey) {
-        throw new Error('Wallet not connected. Please connect your wallet first.');
+      // Get the source keypair
+      const sourceSecretKey = localStorage.getItem('stellarSecretKey');
+      if (!sourceSecretKey) {
+        throw new Error('Secret key not found. Please reconnect your wallet.');
       }
       
-      const sourcePublicKey = publicKey;
-      console.log('Using connected wallet address for NFT creation:', sourcePublicKey);
+      const sourceKeypair = StellarSdk.Keypair.fromSecret(sourceSecretKey);
+      const sourcePublicKey = sourceKeypair.publicKey();
+      
+      console.log('Creating NFT with keypair:', {
+        publicKey: sourcePublicKey,
+        // Don't log the full secret key
+        secretKey: sourceSecretKey.substring(0, 5) + '...'
+      });
       
       // Check if account exists
       try {
@@ -258,41 +266,18 @@ export default function StellarSetup() {
         .setTimeout(30)
         .build();
 
-      // Sign the transaction using wallet provider
+      // Sign the transaction
       setNftCreationStatus('Signing transaction...');
-      const signedXdr = await signTransaction(transaction);
-      console.log('Transaction signed successfully');
+      transaction.sign(sourceKeypair);
+      
+      // Convert transaction to XDR for debugging
+      const xdr = transaction.toXDR();
+      console.log('Transaction XDR:', xdr);
       
       // Submit the transaction
       setNftCreationStatus('Submitting transaction...');
       try {
-        // Create a transaction object from the XDR with error handling
-        let submittableTransaction;
-        try {
-          // Using TransactionBuilder approach
-          submittableTransaction = StellarSdk.TransactionBuilder.fromXDR(
-            signedXdr,
-            StellarSdk.Networks.TESTNET
-          );
-          console.log('Parsed transaction using TransactionBuilder');
-        } catch (parseError) {
-          console.error('Failed to parse with TransactionBuilder:', parseError);
-          
-          try {
-            // Try alternative approach with Transaction constructor
-            const envelope = StellarSdk.xdr.TransactionEnvelope.fromXDR(signedXdr, 'base64');
-            submittableTransaction = new StellarSdk.Transaction(envelope, StellarSdk.Networks.TESTNET);
-            console.log('Parsed transaction using Transaction constructor');
-          } catch (parseError2) {
-            console.error('Failed to parse with Transaction constructor:', parseError2);
-            throw new Error('Could not parse the signed transaction. Please try again.');
-          }
-        }
-        
-        // Submit the transaction to the network
-        console.log('Submitting transaction to network');
-        const txResult = await server.submitTransaction(submittableTransaction);
-        
+        const txResult = await server.submitTransaction(transaction);
         console.log('Transaction successful:', txResult);
 
         setNftCreationStatus('NFT created successfully!');
