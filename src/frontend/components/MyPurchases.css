@@ -127,3 +127,14 @@
     }
   }
   
+  .status-pending {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: #856404;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    margin-top: 5px;
+    text-align: center;
+  }
+  
