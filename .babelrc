@@ -3,6 +3,5 @@
 {
   "presets": [
     "@babel/preset-env"
-    "@react-bable-scripts"
   ]
 }
