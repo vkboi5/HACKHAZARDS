@@ -14,32 +14,41 @@ import { WalletConnectProvider } from './WalletConnectProvider';
 import { WalletConnectConnection } from './WalletConnectConnection';
 import StellarSetup from './StellarSetup';
 
+// Web3Auth import
+import { Web3AuthProvider } from '../../contexts/Web3AuthContext';
+import Web3AuthLogin from './Web3AuthLogin';
+
 function App() {
   return (
-    <WalletConnectProvider>
-      <BrowserRouter>
-        <div className="App">
-          <Navigation />
-          <SecurityAlert />
-          <div className="content-container">
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/create" element={<Create />} />
-              <Route path="/my-listed-items" element={<MyListedItems />} />
-              <Route path="/my-purchases" element={<MyPurchases />} />
-              <Route path="/stellar-setup" element={
-                <div className="section">
-                  <WalletConnectConnection />
-                  <div className="mt-4">
-                    <StellarSetup />
+    <Web3AuthProvider>
+      <WalletConnectProvider>
+        <BrowserRouter>
+          <div className="App">
+            <Navigation />
+            <SecurityAlert />
+            <div className="content-container">
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/create" element={<Create />} />
+                <Route path="/my-listed-items" element={<MyListedItems />} />
+                <Route path="/my-purchases" element={<MyPurchases />} />
+                <Route path="/stellar-setup" element={
+                  <div className="section">
+                    <div className="mb-4">
+                      <Web3AuthLogin />
+                    </div>
+                    <WalletConnectConnection />
+                    <div className="mt-4">
+                      <StellarSetup />
+                    </div>
                   </div>
-                </div>
-              } />
-            </Routes>
+                } />
+              </Routes>
+            </div>
           </div>
-        </div>
-      </BrowserRouter>
-    </WalletConnectProvider>
+        </BrowserRouter>
+      </WalletConnectProvider>
+    </Web3AuthProvider>
   );
 }
 
