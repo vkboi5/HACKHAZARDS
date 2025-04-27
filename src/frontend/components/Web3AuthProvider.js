@@ -3,6 +3,7 @@ import { Web3Auth } from '@web3auth/modal';
 import { CHAIN_NAMESPACES } from '@web3auth/base';
 import { OpenloginAdapter } from '@web3auth/openlogin-adapter';
 import { SolanaPrivateKeyProvider } from '@web3auth/solana-provider';
+import stellarAuthService from '../../services/stellarAuthService';
 
 // Create a context for Web3Auth
 const Web3AuthContext = createContext();
@@ -19,6 +20,8 @@ export function Web3AuthProvider({ children }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
+  const [stellarAccount, setStellarAccount] = useState(null);
+  const [userEmail, setUserEmail] = useState(null);
 
   // Initialization logic
   const initializeWeb3Auth = useCallback(async () => {
@@ -68,7 +71,13 @@ export function Web3AuthProvider({ children }) {
       if (web3authInstance.connected) {
         const user = await web3authInstance.getUserInfo();
         setPublicKey(user.email || user.name);
+        setUserEmail(user.email);
         setIsConnected(true);
+        
+        // Get private key and create Stellar account
+        const privateKey = await web3authInstance.provider.request({ method: "private_key" });
+        const stellarAccount = await stellarAuthService.createStellarAccountFromWeb3Auth(privateKey, user.email);
+        setStellarAccount(stellarAccount);
       }
       setReady(true);
     } catch (err) {
@@ -95,7 +104,14 @@ export function Web3AuthProvider({ children }) {
       const web3authProvider = await web3auth.connect();
       const user = await web3auth.getUserInfo();
       setPublicKey(user.email || user.name);
+      setUserEmail(user.email);
       setIsConnected(true);
+      
+      // Get private key and create Stellar account
+      const privateKey = await web3authProvider.request({ method: "private_key" });
+      const stellarAccount = await stellarAuthService.createStellarAccountFromWeb3Auth(privateKey, user.email);
+      setStellarAccount(stellarAccount);
+      
       setError(null);
     } catch (err) {
       console.error('Login error:', err);
@@ -112,7 +128,9 @@ export function Web3AuthProvider({ children }) {
         await web3auth.logout();
       }
       setPublicKey(null);
+      setUserEmail(null);
       setIsConnected(false);
+      setStellarAccount(null);
       setError(null);
     } catch (err) {
       console.error('Logout error:', err);
@@ -128,7 +146,9 @@ export function Web3AuthProvider({ children }) {
     ready,
     login,
     logout,
-    retryInit: initializeWeb3Auth
+    retryInit: initializeWeb3Auth,
+    stellarAccount,
+    userEmail
   };
 
   return (

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button, Alert, Spinner, Modal } from 'react-bootstrap';
 import { useWalletConnect } from './WalletConnectProvider';
 import { useWeb3Auth } from './Web3AuthProvider';
+import stellarAuthService from '../../services/stellarAuthService';
 import './WalletConnection.css';
 
 export function WalletConnection() {
@@ -19,11 +20,29 @@ export function WalletConnection() {
     isConnected: isWeb3AuthConnected,
     error: web3AuthError,
     login: web3AuthLogin,
-    logout: web3AuthLogout
+    logout: web3AuthLogout,
+    stellarAccount,
+    loading: web3AuthLoading
   } = useWeb3Auth();
 
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [stellarBalance, setStellarBalance] = useState(null);
+
+  useEffect(() => {
+    if (stellarAccount) {
+      // Load Stellar balance when account is created
+      const loadBalance = async () => {
+        try {
+          const balance = await stellarAuthService.getXlmBalance(stellarAccount.publicKey);
+          setStellarBalance(balance);
+        } catch (err) {
+          console.error('Failed to load Stellar balance:', err);
+        }
+      };
+      loadBalance();
+    }
+  }, [stellarAccount]);
 
   const handleStellarConnect = async () => {
     try {
@@ -91,6 +110,17 @@ export function WalletConnection() {
                 <div className="public-key">
                   {web3AuthPublicKey}
                 </div>
+                {stellarAccount && (
+                  <div className="mt-3">
+                    <h5>Stellar Account</h5>
+                    <div className="public-key">
+                      {stellarAccount.publicKey}
+                    </div>
+                    <div className="mt-2">
+                      <strong>Balance:</strong> {stellarBalance ? `${stellarBalance.toFixed(2)} XLM` : 'Loading...'}
+                    </div>
+                  </div>
+                )}
                 <Button 
                   variant="outline-danger" 
                   onClick={web3AuthLogout}
@@ -103,8 +133,12 @@ export function WalletConnection() {
               <Alert variant="info" className="mb-3">
                 <h4 className="mb-2">Web3Auth Not Connected</h4>
                 <p>Login with Web3Auth for additional features</p>
-                <Button variant="primary" onClick={handleWeb3AuthConnect}>
-                  Login with Web3Auth
+                <Button 
+                  variant="primary" 
+                  onClick={handleWeb3AuthConnect}
+                  disabled={web3AuthLoading}
+                >
+                  {web3AuthLoading ? 'Loading...' : 'Login with Web3Auth'}
                 </Button>
               </Alert>
             )}

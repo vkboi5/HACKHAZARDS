@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Container, Row, Col, Form, Button, Alert, Spinner, Tabs, Tab, InputGroup } from 'react-bootstrap';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { useWalletConnect } from './WalletConnectProvider';
+import { useWeb3Auth } from './Web3AuthProvider';
 import axios from 'axios';
 import './Create.css';
 import { toast } from 'react-hot-toast';
@@ -13,7 +14,8 @@ import 'react-datepicker/dist/react-datepicker.css';
 
 const Create = () => {
   const navigate = useNavigate();
-  const { publicKey, isConnected, signAndSubmitTransaction } = useWalletConnect();
+  const { publicKey: stellarPublicKey, isConnected: isStellarConnected, signAndSubmitTransaction } = useWalletConnect();
+  const { stellarAccount, isConnected: isWeb3AuthConnected } = useWeb3Auth();
   const [formInput, setFormInput] = useState({
     price: '',
     name: '',
@@ -35,6 +37,19 @@ const Create = () => {
   });
   const [envVarsLoaded, setEnvVarsLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState('fixed-price');
+
+  // Get the active wallet's public key
+  const getActivePublicKey = () => {
+    if (isWeb3AuthConnected && stellarAccount) {
+      return stellarAccount.publicKey;
+    }
+    return stellarPublicKey;
+  };
+
+  // Check if any wallet is connected
+  const isWalletConnected = () => {
+    return isStellarConnected || isWeb3AuthConnected;
+  };
 
   // Validate price
   const validatePrice = (price) => {
@@ -404,6 +419,15 @@ const Create = () => {
 
   async function createNFT() {
     try {
+      if (!isWalletConnected()) {
+        throw new Error('Please connect a wallet first');
+      }
+
+      const sourcePublicKey = getActivePublicKey();
+      if (!sourcePublicKey) {
+        throw new Error('No wallet connected');
+      }
+
       setIsLoading(true);
       setErrorMsg('');
       setStatusMsg('Starting NFT creation process...');
@@ -412,9 +436,6 @@ const Create = () => {
       const { name, description, price, assetCode } = formInput;
       if (!name || !description || !price || !assetCode || !selectedFile) {
         throw new Error('Please fill all fields and select an image');
-      }
-      if (!isConnected || !publicKey) {
-        throw new Error('Please connect your Stellar wallet');
       }
 
       // Validate and normalize asset code
@@ -470,7 +491,7 @@ const Create = () => {
         description,
         image: imageResult.url,
         price: validatedPrice,
-        creator: publicKey,
+        creator: sourcePublicKey,
         assetCode: validatedAssetCode,
         created_at: new Date().toISOString(),
         attributes: [
@@ -502,7 +523,7 @@ const Create = () => {
 
       // Initialize Stellar server
       const server = new StellarSdk.Horizon.Server(process.env.REACT_APP_HORIZON_URL);
-      const sourceAccount = await server.loadAccount(publicKey);
+      const sourceAccount = await server.loadAccount(sourcePublicKey);
 
       // Check account balance
       const xlmBalance = sourceAccount.balances.find((b) => b.asset_type === 'native');
@@ -518,102 +539,7 @@ const Create = () => {
       }
 
       // Create the NFT asset
-      const nftAsset = new StellarSdk.Asset(validatedAssetCode, publicKey);
-
-      // Helper function to submit a transaction
-      const submitTransaction = async (operations, description) => {
-        try {
-          const currentAccount = await server.loadAccount(publicKey);
-          console.log(`Account sequence before ${description}:`, currentAccount.sequenceNumber());
-
-          const tx = new StellarSdk.TransactionBuilder(currentAccount, {
-            fee: StellarSdk.BASE_FEE,
-            networkPassphrase: networkConfig.passphrase,
-          }).setTimeout(180);
-
-          operations.forEach((op, index) => {
-            console.log(`Adding operation ${index + 1} to ${description}:`, {
-              type: op.type,
-              ...(op.type === 'payment'
-                ? {
-                    asset: op.asset?.getCode(),
-                    amount: op.amount,
-                    destination: op.destination,
-                  }
-                : op.type === 'manageData'
-                ? {
-                    name: op.name,
-                    value: op.value ? op.value.toString() : null,
-                  }
-                : op.type === 'manageSellOffer'
-                ? {
-                    selling: op.selling.getCode(),
-                    buying: op.buying.getCode(),
-                    amount: op.amount,
-                    price: op.price,
-                  }
-                : {}),
-            });
-            tx.addOperation(op);
-          });
-
-          const built = tx.build();
-          console.log(`${description} details:`, {
-            operations: built.operations.map((op) => ({
-              type: op.type,
-              source: op.source || 'default',
-              ...(op.type === 'payment' && op.asset
-                ? {
-                    asset: op.asset.getCode(),
-                    amount: op.amount,
-                    destination: op.destination,
-                  }
-                : op.type === 'manageData'
-                ? {
-                    name: op.name,
-                    value: op.value ? op.value.toString() : null,
-                  }
-                : op.type === 'manageSellOffer'
-                ? {
-                    selling: op.selling.getCode(),
-                    buying: op.buying.getCode(),
-                    amount: op.amount,
-                    price: op.price,
-                  }
-                : {}),
-            })),
-            sequence: built.sequence,
-            source: built.source,
-            fee: built.fee,
-          });
-
-          const xdr = built.toXDR();
-          console.log(`${description} XDR:`, xdr);
-
-          const result = await signAndSubmitTransaction(xdr);
-          console.log(`${description} successful:`, result);
-
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          const accountAfter = await server.loadAccount(publicKey);
-          console.log(`Account sequence after ${description}:`, accountAfter.sequenceNumber());
-
-          return result;
-        } catch (error) {
-          console.error(`${description} failed:`, error);
-          if (error.response?.data?.extras?.result_codes) {
-            const codes = error.response.data.extras.result_codes;
-            let errorDetail = `${description} failed: ${codes.transaction || 'Unknown error'}`;
-            if (codes.operations) {
-              const opErrors = codes.operations.map((code, index) =>
-                `Operation ${index + 1}: ${code}`
-              );
-              errorDetail += ` - Operations: [${opErrors.join(', ')}]`;
-            }
-            throw new Error(errorDetail);
-          }
-          throw error;
-        }
-      };
+      const nftAsset = new StellarSdk.Asset(validatedAssetCode, sourcePublicKey);
 
       // Build transaction operations
       const operations = [];
@@ -622,7 +548,7 @@ const Create = () => {
       console.log('Adding payment operation');
       operations.push(
         StellarSdk.Operation.payment({
-          destination: publicKey,
+          destination: sourcePublicKey,
           asset: nftAsset,
           amount: '1.0000000'
         })
@@ -685,6 +611,49 @@ const Create = () => {
           : {}),
       })));
 
+      // Use the appropriate signing method based on the connected wallet
+      const submitTransaction = async (operations, description) => {
+        try {
+          if (isWeb3AuthConnected && stellarAccount) {
+            // Use the Web3Auth-created account's secret key
+            const sourceKeypair = StellarSdk.Keypair.fromSecret(stellarAccount.secretKey);
+            const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+              fee: StellarSdk.BASE_FEE,
+              networkPassphrase: networkConfig.passphrase
+            });
+
+            // Add operations one by one
+            operations.forEach(op => {
+              transaction.addOperation(op);
+            });
+
+            const builtTransaction = transaction.setTimeout(30).build();
+            builtTransaction.sign(sourceKeypair);
+            const result = await server.submitTransaction(builtTransaction);
+            return result;
+          } else {
+            // Use the existing wallet connection
+            const currentAccount = await server.loadAccount(getActivePublicKey());
+            const transaction = new StellarSdk.TransactionBuilder(currentAccount, {
+              fee: StellarSdk.BASE_FEE,
+              networkPassphrase: networkConfig.passphrase
+            });
+
+            // Add operations one by one
+            operations.forEach(op => {
+              transaction.addOperation(op);
+            });
+
+            const builtTransaction = transaction.setTimeout(30).build();
+            const xdr = builtTransaction.toXDR();
+            return await signAndSubmitTransaction(xdr, description);
+          }
+        } catch (error) {
+          console.error('Transaction submission error:', error);
+          throw new Error(`Failed to submit transaction: ${error.message}`);
+        }
+      };
+
       // Submit transaction
       console.log('Submitting NFT creation transaction');
       const result = await submitTransaction(operations, 'NFT creation');
@@ -700,9 +669,9 @@ const Create = () => {
       const paymentEffect = effects.records.find(
         (effect) =>
           effect.type === 'account_credited' &&
-          effect.account === publicKey &&
+          effect.account === sourcePublicKey &&
           effect.asset_code === validatedAssetCode &&
-          effect.asset_issuer === publicKey
+          effect.asset_issuer === sourcePublicKey
       );
 
       if (paymentEffect) {
@@ -731,31 +700,9 @@ const Create = () => {
         throw new Error('NFT creation succeeded but verification failed. Check transaction effects.');
       }
     } catch (error) {
-      console.error('NFT creation error:', error);
-      let errorMessage = 'Failed to create NFT: ';
-      if (error.response?.data?.extras?.result_codes) {
-        const codes = error.response.data.extras.result_codes;
-        errorMessage += `${codes.transaction || 'Unknown error'}`;
-        if (codes.operations) {
-          const opErrors = codes.operations.map((code, index) => {
-            switch (code) {
-              case 'op_malformed':
-                return `Operation ${index + 1} is malformed (check asset code format)`;
-              case 'op_no_trust':
-                return `Operation ${index + 1} requires a trustline`;
-              case 'op_underfunded':
-                return `Operation ${index + 1} lacks sufficient funds`;
-              default:
-                return `Operation ${index + 1} failed: ${code}`;
-            }
-          });
-          errorMessage += `\nOperation errors:\n${opErrors.join('\n')}`;
-        }
-      } else {
-        errorMessage += error.message || 'Unknown error occurred';
-      }
-      setErrorMsg(errorMessage);
-      toast.error(errorMessage);
+      console.error('Error creating NFT:', error);
+      setErrorMsg(error.message);
+      toast.error(error.message);
     } finally {
       setIsLoading(false);
       setStatusMsg('');
@@ -774,8 +721,8 @@ const Create = () => {
       if (!name || !description || !minimumBid || !assetCode || !selectedFile) {
         throw new Error('Please fill all fields and select an image');
       }
-      if (!isConnected || !publicKey) {
-        throw new Error('Please connect your Stellar wallet');
+      if (!isWalletConnected()) {
+        throw new Error('Please connect a wallet first');
       }
 
       // Define validateAndNormalizeAssetCode function within the scope
@@ -832,7 +779,7 @@ const Create = () => {
         description,
         image: imageResult.url,
         minimumBid: validatedMinimumBid,
-        creator: publicKey,
+        creator: getActivePublicKey(),
         assetCode: validatedAssetCode,
         type: 'open_bid',
         created_at: new Date().toISOString(),
@@ -869,7 +816,7 @@ const Create = () => {
 
       // Initialize Stellar server
       const server = new StellarSdk.Horizon.Server(process.env.REACT_APP_HORIZON_URL);
-      const sourceAccount = await server.loadAccount(publicKey);
+      const sourceAccount = await server.loadAccount(getActivePublicKey());
 
       // Check account balance
       const xlmBalance = sourceAccount.balances.find((b) => b.asset_type === 'native');
@@ -885,7 +832,7 @@ const Create = () => {
       }
 
       // Create the NFT asset
-      const nftAsset = new StellarSdk.Asset(validatedAssetCode, publicKey);
+      const nftAsset = new StellarSdk.Asset(validatedAssetCode, getActivePublicKey());
 
       // Build transaction operations
       const operations = [];
@@ -894,7 +841,7 @@ const Create = () => {
       console.log('Adding payment operation');
       operations.push(
         StellarSdk.Operation.payment({
-          destination: publicKey,
+          destination: getActivePublicKey(),
           asset: nftAsset,
           amount: '1.0000000'
         })
@@ -935,7 +882,7 @@ const Create = () => {
       // Define submitTransaction function within the scope
       const submitTransaction = async (operations, description) => {
         try {
-          const currentAccount = await server.loadAccount(publicKey);
+          const currentAccount = await server.loadAccount(getActivePublicKey());
           console.log(`Account sequence before ${description}:`, currentAccount.sequenceNumber());
 
           const tx = new StellarSdk.TransactionBuilder(currentAccount, {
@@ -1002,11 +949,11 @@ const Create = () => {
           const xdr = built.toXDR();
           console.log(`${description} XDR:`, xdr);
 
-          const result = await signAndSubmitTransaction(xdr);
+          const result = await submitTransaction(operations, 'NFT creation (Open for Bids)');
           console.log(`${description} successful:`, result);
 
           await new Promise((resolve) => setTimeout(resolve, 1000));
-          const accountAfter = await server.loadAccount(publicKey);
+          const accountAfter = await server.loadAccount(getActivePublicKey());
           console.log(`Account sequence after ${description}:`, accountAfter.sequenceNumber());
 
           return result;
@@ -1042,9 +989,9 @@ const Create = () => {
       const paymentEffect = effects.records.find(
         (effect) =>
           effect.type === 'account_credited' &&
-          effect.account === publicKey &&
+          effect.account === getActivePublicKey() &&
           effect.asset_code === validatedAssetCode &&
-          effect.asset_issuer === publicKey
+          effect.asset_issuer === getActivePublicKey()
       );
 
       if (paymentEffect) {
@@ -1116,8 +1063,8 @@ const Create = () => {
       if (!name || !description || !price || !assetCode || !selectedFile || !auctionEndDate) {
         throw new Error('Please fill all fields and select an image');
       }
-      if (!isConnected || !publicKey) {
-        throw new Error('Please connect your Stellar wallet');
+      if (!isWalletConnected()) {
+        throw new Error('Please connect a wallet first');
       }
 
       // Validate auction end date
@@ -1180,7 +1127,7 @@ const Create = () => {
         description,
         image: imageResult.url,
         startingPrice: validatedPrice,
-        creator: publicKey,
+        creator: getActivePublicKey(),
         assetCode: validatedAssetCode,
         type: 'timed_auction',
         startTime: now.toISOString(),
@@ -1223,7 +1170,7 @@ const Create = () => {
 
       // Initialize Stellar server
       const server = new StellarSdk.Horizon.Server(process.env.REACT_APP_HORIZON_URL);
-      const sourceAccount = await server.loadAccount(publicKey);
+      const sourceAccount = await server.loadAccount(getActivePublicKey());
 
       // Check account balance
       const xlmBalance = sourceAccount.balances.find((b) => b.asset_type === 'native');
@@ -1239,7 +1186,7 @@ const Create = () => {
       }
 
       // Create the NFT asset
-      const nftAsset = new StellarSdk.Asset(validatedAssetCode, publicKey);
+      const nftAsset = new StellarSdk.Asset(validatedAssetCode, getActivePublicKey());
 
       // Build transaction operations
       const operations = [];
@@ -1248,7 +1195,7 @@ const Create = () => {
       console.log('Adding payment operation');
       operations.push(
         StellarSdk.Operation.payment({
-          destination: publicKey,
+          destination: getActivePublicKey(),
           asset: nftAsset,
           amount: '1.0000000'
         })
@@ -1307,7 +1254,7 @@ const Create = () => {
       // Define submitTransaction function within the scope
       const submitTransaction = async (operations, description) => {
         try {
-          const currentAccount = await server.loadAccount(publicKey);
+          const currentAccount = await server.loadAccount(getActivePublicKey());
           console.log(`Account sequence before ${description}:`, currentAccount.sequenceNumber());
 
           const tx = new StellarSdk.TransactionBuilder(currentAccount, {
@@ -1374,11 +1321,11 @@ const Create = () => {
           const xdr = built.toXDR();
           console.log(`${description} XDR:`, xdr);
 
-          const result = await signAndSubmitTransaction(xdr);
+          const result = await submitTransaction(operations, 'NFT creation (Timed Auction)');
           console.log(`${description} successful:`, result);
 
           await new Promise((resolve) => setTimeout(resolve, 1000));
-          const accountAfter = await server.loadAccount(publicKey);
+          const accountAfter = await server.loadAccount(getActivePublicKey());
           console.log(`Account sequence after ${description}:`, accountAfter.sequenceNumber());
 
           return result;
@@ -1414,9 +1361,9 @@ const Create = () => {
       const paymentEffect = effects.records.find(
         (effect) =>
           effect.type === 'account_credited' &&
-          effect.account === publicKey &&
+          effect.account === getActivePublicKey() &&
           effect.asset_code === validatedAssetCode &&
-          effect.asset_issuer === publicKey
+          effect.asset_issuer === getActivePublicKey()
       );
 
       if (paymentEffect) {
@@ -1431,7 +1378,7 @@ const Create = () => {
         try {
           await AuctionService.createAuction(
             validatedAssetCode,
-            publicKey,
+            getActivePublicKey(),
             validatedPrice,
             auctionEndDate.toISOString(),
             signAndSubmitTransaction
@@ -1491,271 +1438,285 @@ const Create = () => {
   }
 
   return (
-    <div className="create-nft-container">
-      <Container className="create-nft-content">
-        <Row>
-          <Col md={7} className="create-nft-form">
-            <h1>Create New NFT</h1>
+    <Container className="py-4">
+      <h2 className="mb-4">Create NFT</h2>
+      
+      {!isWalletConnected() ? (
+        <Alert variant="warning">
+          Please connect a wallet to create an NFT. You can use either:
+          <ul className="mt-2">
+            <li>Connect your Stellar wallet</li>
+            <li>Login with Web3Auth</li>
+          </ul>
+        </Alert>
+      ) : (
+        <div className="create-nft-container">
+          <Container className="create-nft-content">
+            <Row>
+              <Col md={7} className="create-nft-form">
+                <h1>Create New NFT</h1>
 
-            {errorMsg && <Alert variant="danger">{errorMsg}</Alert>}
-            {statusMsg && <Alert variant="info">{statusMsg}</Alert>}
+                {errorMsg && <Alert variant="danger">{errorMsg}</Alert>}
+                {statusMsg && <Alert variant="info">{statusMsg}</Alert>}
 
-            <Form>
-              <Form.Group className="mb-3">
-                <Form.Label>NFT Name</Form.Label>
-                <Form.Control
-                  type="text"
-                  placeholder="NFT Name"
-                  value={formInput.name}
-                  onChange={e => setFormInput({ ...formInput, name: e.target.value })}
-                />
-              </Form.Group>
-
-              <Form.Group className="mb-3">
-                <Form.Label>Description</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={3}
-                  placeholder="NFT Description"
-                  value={formInput.description}
-                  onChange={e => setFormInput({ ...formInput, description: e.target.value })}
-                />
-              </Form.Group>
-
-              <Form.Group className="mb-3">
-                <Form.Label>Asset Code (max 12 characters)</Form.Label>
-                <Form.Control
-                  type="text"
-                  placeholder="Asset Code (e.g., MYNFT)"
-                  maxLength={12}
-                  value={formInput.assetCode}
-                  onChange={e => setFormInput({ ...formInput, assetCode: e.target.value })}
-                />
-              </Form.Group>
-
-              <Form.Group className="mb-3">
-                <Form.Label>Upload Image</Form.Label>
-                <div className="d-flex align-items-center gap-3">
-                  <input
-                    type="file"
-                    name="nftImage"
-                    id="nftImage"
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                    className="d-none"
-                    required
-                  />
-                  <Button
-                    variant="outline-primary"
-                    onClick={() => document.getElementById('nftImage').click()}
-                  >
-                    Choose Image
-                  </Button>
-                  {selectedFile && (
-                    <span className="text-muted">
-                      {selectedFile.name}
-                    </span>
-                  )}
-                </div>
-                {!selectedFile && (
-                  <Form.Text className="text-muted">
-                    Please select an image file for your NFT
-                  </Form.Text>
-                )}
-              </Form.Group>
-
-              <Tabs 
-                activeKey={activeTab} 
-                onSelect={(k) => setActiveTab(k)}
-                className="mb-4 create-nft-tabs"
-              >
-                <Tab eventKey="fixed-price" title="Fixed Price">
-                  <Form.Group className="mt-3 mb-3">
-                    <Form.Label>Price (XLM)</Form.Label>
+                <Form>
+                  <Form.Group className="mb-3">
+                    <Form.Label>NFT Name</Form.Label>
                     <Form.Control
-                      type="number"
-                      placeholder="NFT Price in XLM"
-                      step="0.0000001"
-                      min="0"
-                      value={formInput.price}
-                      onChange={e => setFormInput({ ...formInput, price: e.target.value })}
+                      type="text"
+                      placeholder="NFT Name"
+                      value={formInput.name}
+                      onChange={e => setFormInput({ ...formInput, name: e.target.value })}
                     />
-                    <Form.Text className="text-muted">
-                      Set a fixed price to sell your NFT immediately
-                    </Form.Text>
                   </Form.Group>
 
-                  <Button
-                    onClick={createNFT}
-                    disabled={
-                      isLoading ||
-                      !formInput.name ||
-                      !formInput.description ||
-                      !formInput.price ||
-                      !formInput.assetCode ||
-                      !selectedFile ||
-                      !envVarsLoaded
-                    }
-                    className="d-flex align-items-center justify-content-center gap-2"
+                  <Form.Group className="mb-3">
+                    <Form.Label>Description</Form.Label>
+                    <Form.Control
+                      as="textarea"
+                      rows={3}
+                      placeholder="NFT Description"
+                      value={formInput.description}
+                      onChange={e => setFormInput({ ...formInput, description: e.target.value })}
+                    />
+                  </Form.Group>
+
+                  <Form.Group className="mb-3">
+                    <Form.Label>Asset Code (max 12 characters)</Form.Label>
+                    <Form.Control
+                      type="text"
+                      placeholder="Asset Code (e.g., MYNFT)"
+                      maxLength={12}
+                      value={formInput.assetCode}
+                      onChange={e => setFormInput({ ...formInput, assetCode: e.target.value })}
+                    />
+                  </Form.Group>
+
+                  <Form.Group className="mb-3">
+                    <Form.Label>Upload Image</Form.Label>
+                    <div className="d-flex align-items-center gap-3">
+                      <input
+                        type="file"
+                        name="nftImage"
+                        id="nftImage"
+                        accept="image/*"
+                        onChange={handleFileSelect}
+                        className="d-none"
+                        required
+                      />
+                      <Button
+                        variant="outline-primary"
+                        onClick={() => document.getElementById('nftImage').click()}
+                      >
+                        Choose Image
+                      </Button>
+                      {selectedFile && (
+                        <span className="text-muted">
+                          {selectedFile.name}
+                        </span>
+                      )}
+                    </div>
+                    {!selectedFile && (
+                      <Form.Text className="text-muted">
+                        Please select an image file for your NFT
+                      </Form.Text>
+                    )}
+                  </Form.Group>
+
+                  <Tabs 
+                    activeKey={activeTab} 
+                    onSelect={(k) => setActiveTab(k)}
+                    className="mb-4 create-nft-tabs"
                   >
-                    {isLoading && <Spinner animation="border" size="sm" />}
-                    {isLoading ? 'Creating...' : 'Create Fixed Price NFT'}
-                  </Button>
-                </Tab>
+                    <Tab eventKey="fixed-price" title="Fixed Price">
+                      <Form.Group className="mt-3 mb-3">
+                        <Form.Label>Price (XLM)</Form.Label>
+                        <Form.Control
+                          type="number"
+                          placeholder="NFT Price in XLM"
+                          step="0.0000001"
+                          min="0"
+                          value={formInput.price}
+                          onChange={e => setFormInput({ ...formInput, price: e.target.value })}
+                        />
+                        <Form.Text className="text-muted">
+                          Set a fixed price to sell your NFT immediately
+                        </Form.Text>
+                      </Form.Group>
 
-                <Tab eventKey="open-for-bids" title="Open for Bids">
-                  <div className="mt-3 mb-3">
-                    <p>Create an NFT that's open for bids from any buyer. You can accept any bid at any time.</p>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Minimum Bid (XLM)</Form.Label>
-                      <Form.Control
-                        type="number"
-                        placeholder="Minimum acceptable bid in XLM"
-                        step="0.0000001"
-                        min="0"
-                        value={formInput.minimumBid}
-                        onChange={e => setFormInput({ ...formInput, minimumBid: e.target.value })}
+                      <Button
+                        onClick={createNFT}
+                        disabled={
+                          isLoading ||
+                          !formInput.name ||
+                          !formInput.description ||
+                          !formInput.price ||
+                          !formInput.assetCode ||
+                          !selectedFile ||
+                          !envVarsLoaded
+                        }
+                        className="d-flex align-items-center justify-content-center gap-2"
+                      >
+                        {isLoading && <Spinner animation="border" size="sm" />}
+                        {isLoading ? 'Creating...' : 'Create Fixed Price NFT'}
+                      </Button>
+                    </Tab>
+
+                    <Tab eventKey="open-for-bids" title="Open for Bids">
+                      <div className="mt-3 mb-3">
+                        <p>Create an NFT that's open for bids from any buyer. You can accept any bid at any time.</p>
+                        <Form.Group className="mb-3">
+                          <Form.Label>Minimum Bid (XLM)</Form.Label>
+                          <Form.Control
+                            type="number"
+                            placeholder="Minimum acceptable bid in XLM"
+                            step="0.0000001"
+                            min="0"
+                            value={formInput.minimumBid}
+                            onChange={e => setFormInput({ ...formInput, minimumBid: e.target.value })}
+                          />
+                          <Form.Text className="text-muted">
+                            Set a minimum bid to ensure your NFT sells at a reasonable price
+                          </Form.Text>
+                        </Form.Group>
+
+                        <Button
+                          onClick={createOpenBidNFT}
+                          disabled={
+                            isLoading ||
+                            !formInput.name ||
+                            !formInput.description ||
+                            !formInput.minimumBid ||
+                            !formInput.assetCode ||
+                            !selectedFile ||
+                            !envVarsLoaded
+                          }
+                          className="d-flex align-items-center justify-content-center gap-2"
+                        >
+                          {isLoading && <Spinner animation="border" size="sm" />}
+                          {isLoading ? 'Creating...' : 'Create Open Bid NFT'}
+                        </Button>
+                      </div>
+                    </Tab>
+
+                    <Tab eventKey="timed-auction" title="Timed Auction">
+                      <div className="mt-3 mb-3">
+                        <p>Create an NFT auction that automatically ends at a specific time.</p>
+                        
+                        <Form.Group className="mb-3">
+                          <Form.Label>Starting Price (XLM)</Form.Label>
+                          <Form.Control
+                            type="number"
+                            placeholder="Starting price in XLM"
+                            step="0.0000001"
+                            min="0"
+                            value={formInput.price}
+                            onChange={e => setFormInput({ ...formInput, price: e.target.value })}
+                          />
+                          <Form.Text className="text-muted">
+                            Set a starting price for your auction
+                          </Form.Text>
+                        </Form.Group>
+
+                        <Form.Group className="mb-3">
+                          <Form.Label>Auction End Date</Form.Label>
+                          <br />
+                          <DatePicker
+                            selected={formInput.auctionEndDate}
+                            onChange={(date) => setFormInput({ ...formInput, auctionEndDate: date })}
+                            showTimeSelect
+                            timeFormat="HH:mm"
+                            timeIntervals={15}
+                            timeCaption="time"
+                            dateFormat="MMMM d, yyyy h:mm aa"
+                            minDate={new Date()}
+                            className="form-control"
+                          />
+                          <Form.Text className="text-muted">
+                            Select when your auction will end
+                          </Form.Text>
+                        </Form.Group>
+
+                        <Button
+                          onClick={createTimedAuctionNFT}
+                          disabled={
+                            isLoading ||
+                            !formInput.name ||
+                            !formInput.description ||
+                            !formInput.price ||
+                            !formInput.assetCode ||
+                            !selectedFile ||
+                            !formInput.auctionEndDate ||
+                            !envVarsLoaded
+                          }
+                          className="d-flex align-items-center justify-content-center gap-2"
+                        >
+                          {isLoading && <Spinner animation="border" size="sm" />}
+                          {isLoading ? 'Creating...' : 'Create Timed Auction NFT'}
+                        </Button>
+                      </div>
+                    </Tab>
+                  </Tabs>
+
+                  {!envVarsLoaded && (
+                    <Alert variant="warning" className="mt-3">
+                      <strong>Environment configuration missing</strong>
+                      <p>Your application is missing required environment variables. Please check the README for setup instructions.</p>
+                    </Alert>
+                  )}
+                </Form>
+              </Col>
+
+              <Col md={5} className="create-nft-preview">
+                <div className="preview-container">
+                  <h2>Preview</h2>
+                  <div className="image-preview">
+                    {previewUrl ? (
+                      <img
+                        src={previewUrl}
+                        alt="Preview"
+                        className="preview-image"
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '300px',
+                          objectFit: 'contain',
+                          border: '1px solid #dee2e6',
+                          borderRadius: '4px',
+                          padding: '4px',
+                        }}
                       />
-                      <Form.Text className="text-muted">
-                        Set a minimum bid to ensure your NFT sells at a reasonable price
-                      </Form.Text>
-                    </Form.Group>
-
-                    <Button
-                      onClick={createOpenBidNFT}
-                      disabled={
-                        isLoading ||
-                        !formInput.name ||
-                        !formInput.description ||
-                        !formInput.minimumBid ||
-                        !formInput.assetCode ||
-                        !selectedFile ||
-                        !envVarsLoaded
-                      }
-                      className="d-flex align-items-center justify-content-center gap-2"
-                    >
-                      {isLoading && <Spinner animation="border" size="sm" />}
-                      {isLoading ? 'Creating...' : 'Create Open Bid NFT'}
-                    </Button>
+                    ) : (
+                      <p>No image uploaded</p>
+                    )}
                   </div>
-                </Tab>
-
-                <Tab eventKey="timed-auction" title="Timed Auction">
-                  <div className="mt-3 mb-3">
-                    <p>Create an NFT auction that automatically ends at a specific time.</p>
+                  <div className="preview-details">
+                    <h3>{formInput.name || 'NFT Name'}</h3>
+                    <p>{formInput.description || 'NFT Description'}</p>
                     
-                    <Form.Group className="mb-3">
-                      <Form.Label>Starting Price (XLM)</Form.Label>
-                      <Form.Control
-                        type="number"
-                        placeholder="Starting price in XLM"
-                        step="0.0000001"
-                        min="0"
-                        value={formInput.price}
-                        onChange={e => setFormInput({ ...formInput, price: e.target.value })}
-                      />
-                      <Form.Text className="text-muted">
-                        Set a starting price for your auction
-                      </Form.Text>
-                    </Form.Group>
-
-                    <Form.Group className="mb-3">
-                      <Form.Label>Auction End Date</Form.Label>
-                      <br />
-                      <DatePicker
-                        selected={formInput.auctionEndDate}
-                        onChange={(date) => setFormInput({ ...formInput, auctionEndDate: date })}
-                        showTimeSelect
-                        timeFormat="HH:mm"
-                        timeIntervals={15}
-                        timeCaption="time"
-                        dateFormat="MMMM d, yyyy h:mm aa"
-                        minDate={new Date()}
-                        className="form-control"
-                      />
-                      <Form.Text className="text-muted">
-                        Select when your auction will end
-                      </Form.Text>
-                    </Form.Group>
-
-                    <Button
-                      onClick={createTimedAuctionNFT}
-                      disabled={
-                        isLoading ||
-                        !formInput.name ||
-                        !formInput.description ||
-                        !formInput.price ||
-                        !formInput.assetCode ||
-                        !selectedFile ||
-                        !formInput.auctionEndDate ||
-                        !envVarsLoaded
-                      }
-                      className="d-flex align-items-center justify-content-center gap-2"
-                    >
-                      {isLoading && <Spinner animation="border" size="sm" />}
-                      {isLoading ? 'Creating...' : 'Create Timed Auction NFT'}
-                    </Button>
+                    {activeTab === 'fixed-price' && (
+                      <p className="price">{formInput.price ? `${formInput.price} XLM` : '0 XLM'}</p>
+                    )}
+                    
+                    {activeTab === 'open-for-bids' && (
+                      <p className="price">Minimum Bid: {formInput.minimumBid ? `${formInput.minimumBid} XLM` : '0 XLM'}</p>
+                    )}
+                    
+                    {activeTab === 'timed-auction' && (
+                      <>
+                        <p className="price">Starting Price: {formInput.price ? `${formInput.price} XLM` : '0 XLM'}</p>
+                        <p className="auction-end">Ends: {formInput.auctionEndDate?.toLocaleString() || 'Not set'}</p>
+                      </>
+                    )}
+                    
+                    {formInput.assetCode && <p className="asset-code">Asset Code: {formInput.assetCode}</p>}
                   </div>
-                </Tab>
-              </Tabs>
-
-              {!envVarsLoaded && (
-                <Alert variant="warning" className="mt-3">
-                  <strong>Environment configuration missing</strong>
-                  <p>Your application is missing required environment variables. Please check the README for setup instructions.</p>
-                </Alert>
-              )}
-            </Form>
-          </Col>
-
-          <Col md={5} className="create-nft-preview">
-            <div className="preview-container">
-              <h2>Preview</h2>
-              <div className="image-preview">
-                {previewUrl ? (
-                  <img
-                    src={previewUrl}
-                    alt="Preview"
-                    className="preview-image"
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '300px',
-                      objectFit: 'contain',
-                      border: '1px solid #dee2e6',
-                      borderRadius: '4px',
-                      padding: '4px',
-                    }}
-                  />
-                ) : (
-                  <p>No image uploaded</p>
-                )}
-              </div>
-              <div className="preview-details">
-                <h3>{formInput.name || 'NFT Name'}</h3>
-                <p>{formInput.description || 'NFT Description'}</p>
-                
-                {activeTab === 'fixed-price' && (
-                  <p className="price">{formInput.price ? `${formInput.price} XLM` : '0 XLM'}</p>
-                )}
-                
-                {activeTab === 'open-for-bids' && (
-                  <p className="price">Minimum Bid: {formInput.minimumBid ? `${formInput.minimumBid} XLM` : '0 XLM'}</p>
-                )}
-                
-                {activeTab === 'timed-auction' && (
-                  <>
-                    <p className="price">Starting Price: {formInput.price ? `${formInput.price} XLM` : '0 XLM'}</p>
-                    <p className="auction-end">Ends: {formInput.auctionEndDate?.toLocaleString() || 'Not set'}</p>
-                  </>
-                )}
-                
-                {formInput.assetCode && <p className="asset-code">Asset Code: {formInput.assetCode}</p>}
-              </div>
-            </div>
-          </Col>
-        </Row>
-      </Container>
-    </div>
+                </div>
+              </Col>
+            </Row>
+          </Container>
+        </div>
+      )}
+    </Container>
   );
 };
 
