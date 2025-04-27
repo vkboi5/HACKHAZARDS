@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useWalletConnect } from './WalletConnectProvider';
+import { useWallet } from '../../contexts/WalletContext';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import axios from 'axios';
 import { toast, ToastContainer } from 'react-toastify';
@@ -31,7 +31,7 @@ const PINATA_BASE_URL = 'https://api.pinata.cloud';
 const HomePage = ({ marketplace, walletBalance }) => {
   const navigate = useNavigate();
   const nftCardSectionRef = useRef(null);
-  const { publicKey, isConnected, balanceInXLM, signAndSubmitTransaction } = useWalletConnect();
+  const { publicKey, isLoggedIn, buyWithMoonpay } = useWallet();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [selectedFilter, setSelectedFilter] = useState(null);
@@ -49,9 +49,8 @@ const HomePage = ({ marketplace, walletBalance }) => {
   const [buying, setBuying] = useState(false);
 
   const handleCreateClick = () => {
-    if (!isConnected) {
-      toast.error('Please connect your Stellar wallet first!', { position: 'top-center' });
-      navigate('/stellar-setup');
+    if (!isLoggedIn) {
+      toast.error('Please login first!', { position: 'top-center' });
       return;
     }
     navigate('/create');
@@ -152,7 +151,7 @@ const HomePage = ({ marketplace, walletBalance }) => {
       
       // Load the user's account data if they are connected
       let userAccount = null;
-      if (publicKey && isConnected) {
+      if (publicKey && isLoggedIn) {
         try {
           userAccount = await server.loadAccount(publicKey);
           console.log('Loaded user account:', publicKey);
@@ -643,8 +642,8 @@ const HomePage = ({ marketplace, walletBalance }) => {
   };
 
   const handlePlaceBid = (amount) => {
-    if (!isConnected) {
-      toast.error('Please connect your Stellar wallet first!', { position: 'top-center' });
+    if (!isLoggedIn) {
+      toast.error('Please login first!', { position: 'top-center' });
       return;
     }
 
@@ -677,221 +676,103 @@ const HomePage = ({ marketplace, walletBalance }) => {
   };
 
   const handleBuyNFT = async (item) => {
-    if (!isConnected) {
-      toast.error('Please connect your wallet first!', { position: 'top-center' });
-      return;
-    }
-
-    setBuying(item.id);
-    setError(null);
-
     try {
-      // Determine the appropriate price based on NFT type
-      let validatedPrice;
-      
-      console.log('Buying NFT:', {
-        item,
-        isAuction: item.type === 'timed_auction' || item.type === 'open_bid'
-      });
-      
-      if (item.type === 'fixed_price') {
-        validatedPrice = item.price;
-      } else if (item.type === 'open_bid') {
-        validatedPrice = item.minimumBid;
-        toast.error('Open for Bids NFTs require you to place a bid instead of buying directly', { position: 'top-center' });
-        setBuying(false);
+      if (!isLoggedIn) {
+        toast.error('Please login first!', { position: 'top-center' });
         return;
-      } else if (item.type === 'timed_auction') {
-        validatedPrice = item.startingPrice || item.price;
-        toast.error('Timed Auction NFTs require you to place a bid instead of buying directly', { position: 'top-center' });
-        setBuying(false);
-        return;
-      } else {
-        // Default fallback
-        validatedPrice = item.price;
       }
-      
-      // Ensure we have a valid price
-      if (!validatedPrice || isNaN(parseFloat(validatedPrice)) || parseFloat(validatedPrice) <= 0) {
-        throw new Error(`Invalid price: ${validatedPrice || '0'} (must be a positive number)`);
-      }
-      
-      console.log('Buying NFT with params:', {
-        assetCode: item.assetCode,
-        buyer: publicKey,
-        price: validatedPrice,
-        creator: item.creator,
-        type: item.type
-      });
-      
-      await MarketplaceService.buyNFT(
-        item.assetCode,
-        publicKey,
-        validatedPrice,
-        item.creator,
-        signAndSubmitTransaction
-      );
-      
-      toast.success(`Successfully purchased ${item.name} for ${validatedPrice} XLM!`, {
-        position: 'top-center',
-      });
-      
-      // Mark the item as purchased in local storage to ensure it's reflected immediately
-      try {
-        const purchasedItems = JSON.parse(localStorage.getItem('purchasedNfts') || '[]');
-        if (!purchasedItems.includes(item.assetCode)) {
-          purchasedItems.push(item.assetCode);
-          localStorage.setItem('purchasedNfts', JSON.stringify(purchasedItems));
-        }
-        // Trigger a storage event for other components to react
-        localStorage.setItem('nftPurchased', new Date().toISOString());
-      } catch (storageError) {
-        console.error('Error storing purchase in localStorage:', storageError);
-      }
-      
-      // Refresh NFTs after purchase
-      setTimeout(() => {
-        loadNFTs();
-      }, 3000);
-      
+
+      setBuying(true);
+      await buyWithMoonpay(item.id, item.price);
+      toast.success('Purchase initiated!', { position: 'top-center' });
     } catch (error) {
-      const errorMessage = `Failed to buy NFT: ${error.message}`;
-      setError(errorMessage);
-      toast.error(errorMessage, { position: 'top-center' });
+      console.error('Error buying NFT:', error);
+      toast.error('Error initiating purchase. Please try again.', { position: 'top-center' });
     } finally {
       setBuying(false);
     }
   };
 
   return (
-    <div className="home-container">
-      <div className="gradient-section">
-        <div className="gradient-sphere sphere1"></div>
-        <div className="gradient-sphere sphere2"></div>
-        <div className="gradient-sphere sphere3"></div>
-
-        <div className="home-content">
-          <div className="home-text">
-            <h1 className="heading-line1">Connecting Artists</h1>
-            <h1 className="heading-line2">and Collectors through</h1>
-            <h1 className="heading-innovation">NFT INNOVATION</h1>
-            <p>Discover, collect, and trade exclusive NFTs effortlessly!</p>
-            <div className="home-buttons">
-              <button
-                className="explore-button"
-                onClick={() => window.scrollTo({ top: document.querySelector('.white-section').offsetTop, behavior: 'smooth' })}
-              >
-                Explore
-              </button>
-              <button className="create-button" onClick={handleCreateClick}>
-                Create
-              </button>
-            </div>
-          </div>
-          <div className="hero-illustration"></div>
-        </div>
-        <div className="curved-line"></div>
-      </div>
-
-      <div className="white-section">
-        <div className="container">
-          <h2 className="text-center my-4">Featured NFTs</h2>
-          <div className="row">
-            <div className="col-12">
-              <input
-                type="text"
-                className="form-control mb-4"
-                placeholder="Search for NFTs..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="d-flex justify-content-center">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Loading...</span>
-              </div>
-            </div>
-          ) : (
-            <div className="NftCardContainer">
-              {items.length > 0 ? (
-                items
-                  .filter((item) => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                  .map((item, idx) => {
-                    console.log('Rendering NFT item:', {
-                      name: item.name,
-                      type: item.type,
-                      price: item.price,
-                      minimumBid: item.minimumBid,
-                      startingPrice: item.startingPrice
-                    });
-                    
-                    const isAuctionOrBid = item.type === 'open_bid' || item.type === 'timed_auction';
-                    
-                    return (
-                      <div key={idx} className="nft-grid-item">
-                        {isAuctionOrBid ? (
-                          <AuctionCard 
-                            nft={item} 
-                            onBidPlaced={handleBidPlaced} 
-                            refreshNFTs={loadNFTs} 
-                          />
-                        ) : (
-                          <Card className="market-item-card">
-                            <Card.Img variant="top" src={item.image} className="card-img-top" />
-                            <Card.Body>
-                              <Card.Title>{item.name}</Card.Title>
-                              <Card.Text>{item.description}</Card.Text>
-                              <div className="d-flex justify-content-between align-items-center">
-                                <div className="price-tag">{item.price} XLM</div>
-                                <Button 
-                                  onClick={() => handleBuyNFT(item)}
-                                  disabled={item.creator === publicKey || !isConnected || buying === item.id}
-                                  className="buy-button"
-                                >
-                                  {buying === item.id ? (
-                                    <Spinner animation="border" size="sm" />
-                                  ) : (
-                                    "Buy"
-                                  )}
-                                </Button>
-                              </div>
-                            </Card.Body>
-                          </Card>
-                        )}
-                      </div>
-                    );
-                  })
-              ) : (
-                <div className="text-center my-5">
-                  <h4>No NFTs Found</h4>
-                  <p>Be the first to create an NFT marketplace listing!</p>
-                  <button className="btn btn-primary" onClick={handleCreateClick}>
-                    Create NFT
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {selectedItem && (
-        <ItemDetailsModal
-          show={showModal}
-          onHide={() => {
-            setShowModal(false);
-            loadNFTs(); // Refresh NFT list after modal closes
-          }}
-          item={selectedItem}
-          onBid={handlePlaceBid}
-          bidAmount={bidAmount}
-          setBidAmount={setBidAmount}
-        />
-      )}
+    <div className="home-page">
       <ToastContainer />
+      {/* Hero Section */}
+      <div className="hero-section" style={{ backgroundImage: `url(${backgroundImg})` }}>
+        <div className="hero-content">
+          <h1>Welcome to Galerie</h1>
+          <p>Discover and collect unique digital assets</p>
+          <div className="hero-buttons">
+            <Button variant="primary" onClick={handleCreateClick}>
+              Create NFT
+            </Button>
+            <Button variant="outline-light" onClick={handleExploreClick}>
+              Explore
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* NFT Cards Section */}
+      <div ref={nftCardSectionRef} className="nft-cards-section">
+        <h2>Featured NFTs</h2>
+        {loading ? (
+          <div className="loading-container">
+            <img src={loaderGif} alt="Loading..." />
+          </div>
+        ) : error ? (
+          <div className="error-container">
+            <p>{error}</p>
+          </div>
+        ) : (
+          <Row>
+            {items.map((item) => (
+              <Col key={item.id} xs={12} sm={6} md={4} lg={3}>
+                <Card className="nft-card">
+                  <Card.Img
+                    variant="top"
+                    src={item.image}
+                    onError={handleImageError}
+                  />
+                  <Card.Body>
+                    <Card.Title>{item.name}</Card.Title>
+                    <Card.Text>{item.description}</Card.Text>
+                    <div className="nft-actions">
+                      <Button
+                        variant="primary"
+                        onClick={() => handleBuyNFT(item)}
+                        disabled={buying}
+                      >
+                        {buying ? (
+                          <>
+                            <Spinner animation="border" size="sm" /> Buying...
+                          </>
+                        ) : (
+                          'Buy with Card'
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline-primary"
+                        onClick={() => handleViewDetails(item)}
+                      >
+                        View Details
+                      </Button>
+                    </div>
+                  </Card.Body>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        )}
+      </div>
+
+      {/* Item Details Modal */}
+      <ItemDetailsModal
+        show={showModal}
+        onHide={() => setShowModal(false)}
+        item={selectedItem}
+        onBuy={handleBuyNFT}
+        onBid={handlePlaceBid}
+      />
     </div>
   );
 };

@@ -1,0 +1,38 @@
+.wallet-connection-container {
+  margin: 20px 0;
+  padding: 15px;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
+
+.wallet-status {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.public-key {
+  background-color: #f0f0f0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-family: monospace;
+  word-break: break-all;
+  margin-top: 10px;
+  font-size: 0.9rem;
+}
+
+.wallet-connection-container .btn {
+  margin-top: 10px;
+}
+
+.wallet-connection-container .alert {
+  margin-bottom: 20px;
+}
+
+.wallet-connection-container h4 {
+  margin-bottom: 10px;
+}
+
+.wallet-connection-container p {
+  margin-bottom: 15px;
+  color: #666;
+} 
