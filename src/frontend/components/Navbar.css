@@ -1,60 +1,60 @@
 .custom-navbar {
     background: linear-gradient(90deg, #4637B8 0%, #A41C84 100%) !important;
-    padding: 10px 0;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    font-family: 'Roboto', sans-serif;
-    position: relative;
+    padding: 15px 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    font-family: 'Montserrat', sans-serif;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    transition: padding 0.3s ease, box-shadow 0.3s ease;
 }
 
 .navbar-brand {
     display: flex;
     align-items: center;
-    font-size: 1.5rem;
-    font-weight: bold;
+    font-size: 1.6rem;
+    font-weight: 700;
     color: #ffffff;
 }
 
 .logo-img {
     margin-right: 10px;
     max-height: 40px;
-    width: auto;
+    width: 150px;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
 .nav-link {
-    font-size: 1.1rem;
-    font-weight: 500;
-    color: #ffffff !important;
-    transition: color 0.3s ease-in-out;
-    margin: 0 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9) !important;
+    transition: all 0.3s ease;
+    margin: 0 12px;
+    padding: 8px 0;
+    position: relative;
+}
+
+.nav-link:after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 2px;
+    background: #fff;
+    bottom: 0;
+    left: 0;
+    transition: width 0.3s ease;
 }
 
 .nav-link:hover {
-    color: #f0f0f0 !important;
-    text-decoration: underline;
+    color: #ffffff !important;
 }
 
-.nav-button {
-    display: flex;
-    align-items: center;
-    font-size: 1rem;
-    font-family: 'Montserrat', sans-serif;
-    font-weight: 700;
-    color: #ffffff;
-    transition: all 0.3s ease-in-out;
+.nav-link:hover:after {
+    width: 100%;
 }
 
-.nav-button button {
-    border: 2px solid #ffffff;
-    background: transparent;
-    padding: 5px 15px;
-    border-radius: 5px;
-    transition: all 0.3s ease-in-out;
-}
-
-.nav-button button:hover {
-    background: #ffffff;
-    color: #667eea;
-    border: 2px solid #667eea;
+.nav-link.active:after {
+    width: 100%;
 }
 
 .connect-wallet-wrapper {
@@ -62,27 +62,34 @@
 }
 
 .connect-wallet-button {
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-weight: 500;
+    padding: 10px 18px;
+    border-radius: 12px;
+    font-weight: 600;
     transition: all 0.3s ease;
-    border: 2px solid white;
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(5px);
+    letter-spacing: 0.5px;
 }
 
 .connect-wallet-button:hover {
     background-color: #fff;
     color: #4637B8;
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .wallet-dropdown-toggle {
-    border-radius: 20px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
-    padding: 8px 16px;
+    padding: 10px 18px;
     transition: all 0.3s ease;
-    border: 2px solid white;
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(5px);
+    font-weight: 600;
+    letter-spacing: 0.5px;
 }
 
 .wallet-dropdown-toggle::after {
@@ -93,58 +100,76 @@
     background-color: #fff;
     color: #4637B8;
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .balance-badge {
-    padding: 7px 12px;
-    border-radius: 15px;
+    padding: 8px 14px;
+    border-radius: 12px;
     font-weight: 600;
     background-color: rgba(255, 255, 255, 0.9) !important;
     color: #333 !important;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    letter-spacing: 0.5px;
 }
 
 .dropdown-menu {
     border-radius: 12px;
     overflow: hidden;
     border: none;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
     padding: 8px 0;
     margin-top: 8px;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .dropdown-item {
-    padding: 8px 16px;
+    padding: 10px 16px;
     font-size: 14px;
     display: flex;
     align-items: center;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
+    font-weight: 500;
 }
 
 .dropdown-item:hover {
     background-color: #f8f9fa;
+    transform: translateX(5px);
 }
 
 .dropdown-divider {
-    margin: 5px 0;
+    margin: 8px 0;
 }
 
-.badge-info {
+.badge.bg-info {
     background-color: #4637B8 !important;
+    font-size: 0.7rem;
+    padding: 0.35em 0.65em;
+    border-radius: 6px;
+}
+
+.badge.bg-secondary {
+    background-color: #6c757d !important;
+    font-size: 0.7rem;
+    padding: 0.35em 0.65em;
+    border-radius: 6px;
 }
 
 @media (max-width: 992px) {
     .custom-navbar {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
+        padding: 12px 0;
     }
 
     .navbar-toggler {
         order: 3;
-        margin-left: 10px; /* Add space between the button and the toggler */
+        margin-left: 10px;
+        border: none;
+        padding: 8px;
     }
 
     .connect-wallet-wrapper {
@@ -159,10 +184,20 @@
     .navbar-collapse {
         order: 4;
         width: 100%;
+        background: linear-gradient(90deg, #4637B8 0%, #A41C84 100%);
+        border-radius: 0 0 12px 12px;
+        padding: 10px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        margin-top: 10px;
     }
     
     .navbar-toggler-icon {
-        order: 2; /* Ensure the menu icon is beside the connect wallet button */
+        order: 2;
+    }
+
+    .nav-link {
+        text-align: center;
+        margin: 8px 0;
     }
 }
 
@@ -175,21 +210,22 @@
         font-size: 0.9rem;
     }
 
-    .connect-wallet-button {
-        margin-bottom: 0;
-    }
-}
-
-@media (max-width: 991px) {
-    .connect-wallet-wrapper {
-        margin: 15px 0;
+    .connect-wallet-button, .wallet-dropdown-toggle {
+        font-size: 0.9rem;
+        padding: 8px 14px;
     }
 }
 
 /* Make sure the navbar toggler is visible */
 .navbar-toggler {
+    background-color: rgba(255, 255, 255, 0.2);
+    border: none;
+    padding: 8px;
+    transition: background-color 0.3s ease;
+}
+
+.navbar-toggler:hover {
     background-color: rgba(255, 255, 255, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 .navbar-toggler-icon {

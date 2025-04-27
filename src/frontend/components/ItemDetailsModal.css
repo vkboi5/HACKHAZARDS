@@ -1,21 +1,35 @@
 .nft-details-modal .modal-content {
-  border-radius: 16px;
+  border-radius: 20px;
   border: none;
-  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
   overflow: hidden;
+  background-color: #fff;
 }
 
 .nft-details-modal .modal-header {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   background: linear-gradient(90deg, #4637B8 0%, #A41C84 100%);
   color: white;
-  padding: 1.25rem 1.5rem;
+  padding: 1.25rem 1.8rem;
 }
 
 .nft-details-modal .modal-title {
   font-weight: 700;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   font-family: 'Montserrat', sans-serif;
+  letter-spacing: 0.5px;
+}
+
+.nft-details-modal .close {
+  color: white;
+  opacity: 0.8;
+  font-size: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.nft-details-modal .close:hover {
+  opacity: 1;
+  transform: rotate(90deg);
 }
 
 .nft-modal-content {
@@ -33,9 +47,11 @@
 .nft-modal-image {
   flex: 0 0 100%;
   max-width: 100%;
-  padding: 15px;
+  padding: 24px;
   display: flex;
   justify-content: center;
+  align-items: center;
+  background-color: #fafafa;
 }
 
 @media (min-width: 768px) {
@@ -47,115 +63,203 @@
 
 .nft-modal-image img {
   max-width: 100%;
-  max-height: 400px;
-  border-radius: 12px;
+  max-height: 450px;
+  border-radius: 16px;
   object-fit: contain;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s ease;
+}
+
+.nft-modal-image img:hover {
+  transform: scale(1.02);
 }
 
 .nft-modal-info {
   flex: 1;
-  padding: 15px 20px;
+  padding: 24px 30px;
 }
 
 .nft-modal-info h3 {
-  font-size: 1.8rem;
+  font-size: 2rem;
   font-weight: 700;
-  margin-bottom: 10px;
-  color: #333;
+  margin-bottom: 12px;
+  color: #1a1a1a;
   font-family: 'Montserrat', sans-serif;
+  letter-spacing: 0.5px;
 }
 
 .nft-description {
   font-size: 1rem;
   color: #666;
-  margin-bottom: 20px;
-  line-height: 1.5;
+  margin-bottom: 24px;
+  line-height: 1.6;
+  font-family: 'Poppins', sans-serif;
 }
 
 .nft-details-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .detail-label {
   font-weight: 600;
-  color: #666;
+  color: #777;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.95rem;
 }
 
 .detail-value {
   font-weight: 500;
   color: #333;
+  font-family: 'Poppins', sans-serif;
 }
 
 .detail-value.price {
-  font-weight: 700;
-  font-size: 1.2rem;
+  font-weight: 800;
+  font-size: 1.5rem;
   color: #4637B8;
   background: linear-gradient(90deg, #4637B8, #A41C84);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  font-family: 'Montserrat', sans-serif;
+  letter-spacing: 0.5px;
 }
 
 .nft-attributes {
-  margin-top: 20px;
-  margin-bottom: 20px;
+  margin-top: 25px;
+  margin-bottom: 25px;
+  background-color: #f9f9f9;
+  border-radius: 16px;
+  padding: 20px;
 }
 
 .nft-attributes h4 {
   font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 15px;
-  color: #333;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: #1a1a1a;
   font-family: 'Montserrat', sans-serif;
+  position: relative;
+  display: inline-block;
+}
+
+.nft-attributes h4:after {
+  content: '';
+  position: absolute;
+  width: 40px;
+  height: 2px;
+  background: linear-gradient(90deg, #4637B8, #A41C84);
+  bottom: -5px;
+  left: 0;
+  border-radius: 2px;
 }
 
 .attributes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
 }
 
 .attribute-item {
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  padding: 10px;
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 14px;
   text-align: center;
   border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+}
+
+.attribute-item:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08);
+  border-color: rgba(70, 55, 184, 0.2);
 }
 
 .attribute-trait {
   display: block;
   font-size: 0.8rem;
-  color: #666;
-  margin-bottom: 5px;
+  color: #777;
+  margin-bottom: 6px;
+  font-family: 'Poppins', sans-serif;
 }
 
 .attribute-value {
   display: block;
   font-weight: 600;
-  color: #333;
+  color: #1a1a1a;
+  font-size: 1rem;
+  font-family: 'Montserrat', sans-serif;
 }
 
 .nft-actions {
-  margin-top: 25px;
+  margin-top: 30px;
 }
 
-.bid-button {
+.buy-button {
   width: 100%;
-  margin-bottom: 15px;
+  margin-bottom: 16px;
   background: linear-gradient(90deg, #4637B8 0%, #A41C84 100%);
   border: none;
   font-weight: 600;
-  padding: 10px 0;
+  padding: 12px 0;
+  transition: all 0.3s ease;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  letter-spacing: 0.5px;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.buy-button:hover {
+  opacity: 0.9;
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.bid-form {
+  margin-top: 20px;
+  background-color: #f9f9f9;
+  padding: 20px;
+  border-radius: 16px;
+}
+
+.bid-form .form-label {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 8px;
+}
+
+.bid-form .form-control {
+  border-radius: 12px;
+  padding: 12px 15px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  font-size: 1rem;
   transition: all 0.3s ease;
 }
 
-.bid-button:hover {
+.bid-form .form-control:focus {
+  border-color: #4637B8;
+  box-shadow: 0 0 0 0.2rem rgba(70, 55, 184, 0.15);
+}
+
+.bid-form .btn-primary {
+  background: linear-gradient(90deg, #4637B8 0%, #A41C84 100%);
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  margin-top: 10px;
+  letter-spacing: 0.5px;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.bid-form .btn-primary:hover {
   opacity: 0.9;
   transform: translateY(-2px);
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
@@ -164,24 +268,22 @@
 .additional-actions {
   display: flex;
   justify-content: space-between;
+  margin-top: 20px;
+  gap: 12px;
 }
 
 .action-button {
   flex: 1;
-  margin: 0 5px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-weight: 500;
-}
-
-.action-button:first-child {
-  margin-left: 0;
-}
-
-.action-button:last-child {
-  margin-right: 0;
+  font-weight: 600;
+  padding: 10px 0;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  font-family: 'Montserrat', sans-serif;
+  letter-spacing: 0.3px;
 }
 
 .action-button.btn-outline-primary {
@@ -193,6 +295,8 @@
   background-color: #4637B8;
   color: white;
   border-color: #4637B8;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(70, 55, 184, 0.15);
 }
 
 .action-button.btn-outline-danger {
@@ -204,4 +308,93 @@
   background-color: #A41C84;
   color: white;
   border-color: #A41C84;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(164, 28, 132, 0.15);
+}
+
+.share-options {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  justify-content: center;
+}
+
+.share-button {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: #f0f0f0;
+  transition: all 0.3s ease;
+  color: #555;
+  font-size: 1.2rem;
+  border: none;
+}
+
+.share-button.twitter {
+  background-color: rgba(29, 161, 242, 0.1);
+  color: #1da1f2;
+}
+
+.share-button.facebook {
+  background-color: rgba(59, 89, 152, 0.1);
+  color: #3b5998;
+}
+
+.share-button.whatsapp {
+  background-color: rgba(37, 211, 102, 0.1);
+  color: #25d366;
+}
+
+.share-button:hover {
+  transform: translateY(-3px) scale(1.1);
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.1);
+}
+
+@media (max-width: 768px) {
+  .nft-modal-info {
+    padding: 20px;
+  }
+  
+  .nft-modal-image {
+    padding: 15px;
+  }
+  
+  .nft-modal-info h3 {
+    font-size: 1.6rem;
+  }
+  
+  .detail-value.price {
+    font-size: 1.3rem;
+  }
+  
+  .attributes-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+  
+  .buy-button {
+    padding: 10px 0;
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .nft-modal-image img {
+    max-height: 300px;
+  }
+  
+  .attributes-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+  
+  .additional-actions {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .action-button {
+    width: 100%;
+  }
 } 

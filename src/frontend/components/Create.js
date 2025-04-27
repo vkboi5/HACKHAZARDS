@@ -28,8 +28,7 @@ const Create = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [pinataConfig, setPinataConfig] = useState({
-    apiKey: process.env.REACT_APP_PINATA_API_KEY,
-    apiSecret: process.env.REACT_APP_PINATA_API_SECRET,
+    jwt: process.env.REACT_APP_PINATA_JWT,
     gateway: process.env.REACT_APP_IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/',
     timeout: 60000,
   });
@@ -52,8 +51,7 @@ const Create = () => {
   // Verify environment variables on component mount
   useEffect(() => {
     const missingVars = [];
-    if (!process.env.REACT_APP_PINATA_API_KEY) missingVars.push('REACT_APP_PINATA_API_KEY');
-    if (!process.env.REACT_APP_PINATA_API_SECRET) missingVars.push('REACT_APP_PINATA_API_SECRET');
+    if (!process.env.REACT_APP_PINATA_JWT) missingVars.push('REACT_APP_PINATA_JWT');
     if (!process.env.REACT_APP_IPFS_GATEWAY) missingVars.push('REACT_APP_IPFS_GATEWAY');
     if (!process.env.REACT_APP_STELLAR_NETWORK) missingVars.push('REACT_APP_STELLAR_NETWORK');
     if (!process.env.REACT_APP_HORIZON_URL) missingVars.push('REACT_APP_HORIZON_URL');
@@ -86,24 +84,9 @@ const Create = () => {
   useEffect(() => {
     if (!envVarsLoaded) return;
 
-    if (!pinataConfig.apiKey || !pinataConfig.apiSecret) {
-      console.warn('Pinata API credentials not found in environment variables.');
-      setErrorMsg('Warning: IPFS configuration missing.');
-      return;
-    }
-
-    if (pinataConfig.apiKey === 'your-pinata-api-key' || 
-        pinataConfig.apiSecret === 'your-pinata-api-secret') {
-      setErrorMsg(
-        'Warning: Using placeholder Pinata API keys.\n' +
-        '1. Sign up at https://app.pinata.cloud\n' +
-        '2. Create an API key with "Admin" permissions\n' +
-        '3. Update your .env file\n' +
-        '4. Restart your development server'
-      );
-      return;
-    } else if (pinataConfig.apiKey.length < 10 || pinataConfig.apiSecret.length < 20) {
-      setErrorMsg('Warning: Invalid Pinata API keys.');
+    if (!pinataConfig.jwt) {
+      console.warn('Pinata JWT not found in environment variables.');
+      setErrorMsg('Warning: IPFS configuration missing. Please add REACT_APP_PINATA_JWT to your .env file.');
       return;
     }
 
@@ -112,8 +95,7 @@ const Create = () => {
         setStatusMsg('Verifying Pinata credentials...');
         const response = await axios.get('https://api.pinata.cloud/data/testAuthentication', {
           headers: {
-            'pinata_api_key': pinataConfig.apiKey,
-            'pinata_secret_api_key': pinataConfig.apiSecret,
+            'Authorization': `Bearer ${pinataConfig.jwt}`
           },
         });
 
@@ -124,19 +106,19 @@ const Create = () => {
         }
       } catch (error) {
         console.error('Pinata credential validation failed:', error);
-        setErrorMsg('Error: Invalid Pinata credentials.');
+        setErrorMsg('Error: Invalid Pinata JWT. Please check your REACT_APP_PINATA_JWT in .env file.');
       }
     };
 
     validatePinataCredentials();
-  }, [envVarsLoaded]);
+  }, [envVarsLoaded, pinataConfig.jwt]);
 
   useEffect(() => {
     if (errorMsg && errorMsg.includes('Pinata')) {
       console.info('To fix Pinata issues:');
       console.info('1. Create an account at https://app.pinata.cloud');
-      console.info('2. Generate API keys at https://app.pinata.cloud/keys');
-      console.info('3. Add keys to .env file');
+      console.info('2. Generate a JWT with admin access at https://app.pinata.cloud/keys');
+      console.info('3. Add the JWT to your .env file as REACT_APP_PINATA_JWT');
       console.info('4. Restart the development server');
     }
   }, [errorMsg]);
@@ -148,9 +130,9 @@ const Create = () => {
 
       const localUrl = URL.createObjectURL(file);
 
-      if (!pinataConfig.apiKey || !pinataConfig.apiSecret) {
+      if (!pinataConfig.jwt) {
         setStatusMsg('IPFS configuration missing. Using local storage.');
-        console.warn('Pinata credentials missing.');
+        console.warn('Pinata JWT missing.');
         return { url: localUrl, source: 'local', success: false };
       }
 
@@ -186,8 +168,7 @@ const Create = () => {
             {
               headers: {
                 'Content-Type': 'multipart/form-data',
-                'pinata_api_key': pinataConfig.apiKey,
-                'pinata_secret_api_key': pinataConfig.apiSecret,
+                'Authorization': `Bearer ${pinataConfig.jwt}`
               },
               maxBodyLength: Infinity,
               maxContentLength: Infinity,
@@ -220,7 +201,7 @@ const Create = () => {
               shouldRetry = false;
             }
             if (statusCode === 401) {
-              errorMessage = 'Authentication failed. Check Pinata API keys.';
+              errorMessage = 'Authentication failed. Check Pinata JWT.';
               shouldRetry = false;
             } else if (statusCode === 429) {
               errorMessage = 'Rate limit exceeded. Waiting.';
@@ -274,15 +255,15 @@ const Create = () => {
         return URL.createObjectURL(blob);
       };
 
-      if (!pinataConfig.apiKey || !pinataConfig.apiSecret) {
+      if (!pinataConfig.jwt) {
         setStatusMsg('IPFS configuration missing.');
-        console.warn('Pinata credentials missing.');
+        console.warn('Pinata JWT missing.');
         if (process.env.NODE_ENV === 'development') {
           const localUrl = createLocalFallback();
           console.warn('Using local storage in development mode');
           return { url: localUrl, source: 'local', success: false };
         }
-        throw new Error('Pinata API credentials not configured.');
+        throw new Error('Pinata JWT not configured.');
       }
 
       let retryCount = 0;
@@ -320,8 +301,7 @@ const Create = () => {
             {
               headers: {
                 'Content-Type': 'application/json',
-                'pinata_api_key': pinataConfig.apiKey,
-                'pinata_secret_api_key': pinataConfig.apiSecret,
+                'Authorization': `Bearer ${pinataConfig.jwt}`
               },
               timeout: pinataConfig.timeout,
             }

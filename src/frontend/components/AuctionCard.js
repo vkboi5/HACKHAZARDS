@@ -4,7 +4,7 @@ import { useWalletConnect } from './WalletConnectProvider';
 import { toast } from 'react-hot-toast';
 import BidService from './BidService';
 import AuctionService from './AuctionService';
-import { FaGavel, FaTimes, FaListUl, FaCheck, FaRegClock } from 'react-icons/fa';
+import { FaGavel, FaTimes, FaListUl, FaCheck, FaRegClock, FaUserCircle, FaHeart, FaShareAlt, FaEthereum, FaTwitter, FaFacebook, FaWhatsapp, FaCopy } from 'react-icons/fa';
 
 const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
   const { publicKey, isConnected, signAndSubmitTransaction } = useWalletConnect();
@@ -18,12 +18,18 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
   const [isOwner, setIsOwner] = useState(false);
   const [highestBid, setHighestBid] = useState(null);
   const [bidError, setBidError] = useState(null);
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   useEffect(() => {
     console.log('AuctionCard received NFT:', nft);
     setIsOwner(publicKey === nft.creator);
     fetchBids();
     checkAuctionStatus();
+    
+    // Generate random like count for UI enhancement
+    setLikeCount(Math.floor(Math.random() * 20));
 
     // Set up timer to update time remaining
     const timer = setInterval(() => {
@@ -190,390 +196,238 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
     }
   };
 
+  const formatAddress = (address) => {
+    if (!address) return 'Unknown';
+    return address.slice(0, 4) + '...' + address.slice(-4);
+  };
+
+  const toggleLike = () => {
+    setLiked(!liked);
+    setLikeCount(prevCount => liked ? prevCount - 1 : prevCount + 1);
+    // In a real app, you would call an API to save the like status
+  };
+
+  const handleShare = () => {
+    setShowShareModal(true);
+  };
+
+  const shareToSocial = (platform) => {
+    const url = window.location.href;
+    const text = `Check out this amazing NFT: ${nft.name} on Galerie NFT Marketplace!`;
+    
+    let shareUrl;
+    
+    switch(platform) {
+      case 'twitter':
+        shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+        break;
+      case 'facebook':
+        shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
+        break;
+      case 'whatsapp':
+        shareUrl = `https://wa.me/?text=${encodeURIComponent(text + ' ' + url)}`;
+        break;
+      default:
+        shareUrl = url;
+    }
+    
+    window.open(shareUrl, '_blank');
+    setShowShareModal(false);
+  };
+
   const handleAcceptBid = async (bid) => {
+    if (!isConnected) {
+      toast.error('Please connect your wallet first');
+      return;
+    }
+    
+    if (!isOwner) {
+      toast.error('Only the owner can accept bids');
+      return;
+    }
+    
     try {
-      if (!isConnected) {
-        toast.error('Please connect your wallet first');
-        return;
-      }
-      
-      if (!isOwner) {
-        toast.error('Only the NFT owner can accept bids');
-        return;
-      }
-      
       setLoading(true);
       
-      // Accept bid
       console.log('Accepting bid:', bid);
-      
-      try {
-        const result = await BidService.acceptBid(
-          nft.assetCode,
-          publicKey,
-          bid.bidderPublicKey,
-          bid.bidAmount,
-          signAndSubmitTransaction
-        );
-        
-        console.log('Bid accepted result:', result);
-        toast.success('Bid accepted successfully!');
-        
-        // Mark the NFT as sold in localStorage
-        try {
-          // Record the sale in localStorage to ensure it's reflected immediately
-          // 1. Add to purchasedNfts list to filter from Home page
-          const purchasedItems = JSON.parse(localStorage.getItem('purchasedNfts') || '[]');
-          if (!purchasedItems.includes(nft.assetCode)) {
-            purchasedItems.push(nft.assetCode);
-            localStorage.setItem('purchasedNfts', JSON.stringify(purchasedItems));
-          }
-          
-          // 2. Store detailed sale information
-          const salesHistory = JSON.parse(localStorage.getItem('nftSales') || '[]');
-          salesHistory.push({
-            assetCode: nft.assetCode,
-            name: nft.name,
-            image: nft.image,
-            seller: publicKey,
-            buyer: bid.bidderPublicKey,
-            price: bid.bidAmount,
-            timestamp: new Date().toISOString(),
-            saleType: 'bid_accepted',
-            txHash: result.hash
-          });
-          localStorage.setItem('nftSales', JSON.stringify(salesHistory));
-          
-          // 3. Trigger a storage event for components to react
-          localStorage.setItem('nftPurchased', new Date().toISOString());
-        } catch (storageError) {
-          console.error('Error storing sale in localStorage:', storageError);
-        }
-        
-        // Refresh NFTs
-        if (refreshNFTs) {
-          setTimeout(() => {
-            refreshNFTs();
-          }, 3000);
-        }
-        
-        setShowBidsModal(false);
-      } catch (bidError) {
-        // Handle specific transaction errors
-        let errorMessage = bidError.message || 'Failed to accept bid';
-        
-        if (errorMessage.includes('value cannot be longer')) {
-          errorMessage = 'Failed to store NFT sale metadata. The transaction will still be processed.';
-          toast.warning(errorMessage);
-          
-          // This is a non-critical error, so we'll continue with the local updates
-          const purchasedItems = JSON.parse(localStorage.getItem('purchasedNfts') || '[]');
-          if (!purchasedItems.includes(nft.assetCode)) {
-            purchasedItems.push(nft.assetCode);
-            localStorage.setItem('purchasedNfts', JSON.stringify(purchasedItems));
-          }
-          
-          // Refresh NFTs to show the changes
-          if (refreshNFTs) {
-            setTimeout(() => {
-              refreshNFTs();
-            }, 3000);
-          }
-          
-          setShowBidsModal(false);
-        } else {
-          console.error('Error accepting bid:', bidError);
-          toast.error(errorMessage);
-        }
-      }
-      
-      setLoading(false);
-    } catch (error) {
-      console.error('Error in bid acceptance process:', error);
-      toast.error(error.message || 'Failed to process bid acceptance');
-      setLoading(false);
-    }
-  };
-
-  const handleFinalizeAuction = async () => {
-    try {
-      if (!isConnected) {
-        toast.error('Please connect your wallet first');
-        return;
-      }
-      
-      if (!isOwner) {
-        toast.error('Only the NFT owner can finalize the auction');
-        return;
-      }
-      
-      setLoading(true);
-      
-      // Finalize auction
-      const result = await AuctionService.checkAndFinalizeAuction(
+      // Call the service to accept the bid
+      await BidService.acceptBid(
         nft.assetCode,
-        publicKey,
+        nft.creator,
+        bid.bidderPublicKey,
+        bid.bidAmount,
         signAndSubmitTransaction
       );
       
-      if (result.winner) {
-        toast.success(`Auction finalized! NFT sold to ${result.winner && result.winner.substring(0, 10)}... for ${result.amount} XLM`);
-        
-        // Record the auction sale in localStorage
-        try {
-          // Add to purchasedNfts list to filter from Home page
-          const purchasedItems = JSON.parse(localStorage.getItem('purchasedNfts') || '[]');
-          if (!purchasedItems.includes(nft.assetCode)) {
-            purchasedItems.push(nft.assetCode);
-            localStorage.setItem('purchasedNfts', JSON.stringify(purchasedItems));
-          }
-          
-          // Store detailed sale information
-          const salesHistory = JSON.parse(localStorage.getItem('nftSales') || '[]');
-          salesHistory.push({
-            assetCode: nft.assetCode,
-            name: nft.name,
-            image: nft.image,
-            seller: publicKey,
-            buyer: result.winner,
-            price: result.amount,
-            timestamp: new Date().toISOString(),
-            saleType: 'auction_finalized',
-            txHash: result.hash
-          });
-          localStorage.setItem('nftSales', JSON.stringify(salesHistory));
-          
-          // Trigger a storage event for components to react
-          localStorage.setItem('nftPurchased', new Date().toISOString());
-        } catch (storageError) {
-          console.error('Error storing auction sale in localStorage:', storageError);
-        }
-      } else {
-        toast.info('Auction finalized with no bids');
-      }
+      toast.success('Bid accepted successfully!');
+      setShowBidsModal(false);
       
-      // Refresh NFTs
+      // Refresh NFTs to update the UI
       if (refreshNFTs) {
-        setTimeout(() => {
-          refreshNFTs();
-        }, 3000);
+        refreshNFTs();
       }
-      
-      setLoading(false);
     } catch (error) {
-      console.error('Error finalizing auction:', error);
-      toast.error(error.message || 'Failed to finalize auction');
-      setLoading(false);
-    }
-  };
-
-  const handleCancelAuction = async () => {
-    try {
-      if (!isConnected) {
-        toast.error('Please connect your wallet first');
-        return;
-      }
-      
-      if (!isOwner) {
-        toast.error('Only the NFT owner can cancel the auction');
-        return;
-      }
-      
-      setLoading(true);
-      
-      // Cancel auction
-      const result = await AuctionService.cancelAuction(
-        nft.assetCode,
-        publicKey,
-        signAndSubmitTransaction
-      );
-      
-      toast.success('Auction cancelled successfully');
-      
-      // Refresh NFTs
-      if (refreshNFTs) {
-        setTimeout(() => {
-          refreshNFTs();
-        }, 3000);
-      }
-      
-      setLoading(false);
-    } catch (error) {
-      console.error('Error cancelling auction:', error);
-      toast.error(error.message || 'Failed to cancel auction');
+      console.error('Error accepting bid:', error);
+      toast.error(error.message || 'Failed to accept bid');
+    } finally {
       setLoading(false);
     }
   };
 
   const renderAuctionStatus = () => {
-    if (nft.type === 'timed_auction') {
+    if (nft.type === 'fixed_price') {
+      return (
+        <div className="status-ribbon ribbon-fixed">
+          Fixed Price
+        </div>
+      );
+    } else if (nft.type === 'open_bid') {
+      return (
+        <div className="status-ribbon ribbon-open">
+          Open for Bids
+        </div>
+      );
+    } else if (nft.type === 'timed_auction') {
       if (auctionEnded) {
-        return <Badge bg="danger">Auction Ended</Badge>;
+        return (
+          <div className="status-ribbon ribbon-ended">
+            Auction Ended
+          </div>
+        );
       } else {
         return (
-          <>
-            <Badge bg="primary">Timed Auction</Badge>
-            {timeRemaining && (
-              <div className="time-remaining">
-                <FaRegClock className="me-2" /> {timeRemaining}
-              </div>
-            )}
-          </>
+          <div className="status-ribbon ribbon-timed">
+            Timed Auction
+          </div>
         );
       }
-    } else if (nft.type === 'open_bid') {
-      return <Badge bg="success">Open for Bids</Badge>;
-    } else {
-      return <Badge bg="secondary">Fixed Price</Badge>;
     }
+    return null;
   };
 
-  const renderStatusRibbon = () => {
-    if (nft.type === 'timed_auction') {
-      if (auctionEnded) {
-        return <div className="status-ribbon ribbon-ended">Auction Ended</div>;
-      } else {
-        return <div className="status-ribbon ribbon-timed">Timed Auction</div>;
-      }
-    } else if (nft.type === 'open_bid') {
-      return <div className="status-ribbon ribbon-open">Open for Bids</div>;
-    } else {
-      return <div className="status-ribbon ribbon-fixed">Fixed Price</div>;
+  // Render bid form for non-fixed price NFTs
+  const renderBidForm = () => {
+    if (nft.type === 'fixed_price') {
+      return (
+        <Button 
+          className="buy-button w-100" 
+          disabled={!isConnected || isOwner}
+          onClick={() => onBidPlaced(nft, nft.price)}
+        >
+          Buy Now for {nft.price} XLM
+        </Button>
+      );
     }
+    
+    return (
+      <>
+        <div className="bid-input-container">
+          <Form.Control
+            type="number"
+            placeholder={`Enter bid amount (min. ${nft.minimumBid || highestBid?.bidAmount || 1} XLM)`}
+            value={bidAmount}
+            onChange={(e) => {
+              setBidAmount(e.target.value);
+              setBidError(null);
+            }}
+            disabled={loading || !isConnected || isOwner || auctionEnded}
+            className="bid-input mb-2"
+          />
+          {bidError && <div className="text-danger small mb-2">{bidError}</div>}
+          
+          <Button
+            className="place-bid-button w-100"
+            onClick={handleBid}
+            disabled={loading || !isConnected || isOwner || auctionEnded}
+          >
+            {loading ? <Spinner size="sm" animation="border" /> : 'Place Bid'}
+          </Button>
+        </div>
+      </>
+    );
   };
 
   return (
-    <Card className="mb-4 auction-card">
-      {renderStatusRibbon()}
-      <Card.Img variant="top" src={nft.image} alt={nft.name} className="card-img-top" />
+    <Card className="auction-card">
+      {renderAuctionStatus()}
+      
+      <div className="card-img-container">
+        <Card.Img 
+          variant="top" 
+          src={nft.image} 
+          alt={nft.name} 
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = 'https://via.placeholder.com/300x300?text=No+Image';
+          }}
+        />
+        
+        <div className="card-actions">
+          <button className={`like-action ${liked ? 'liked' : ''}`} onClick={toggleLike}>
+            <FaHeart />
+            <span className="like-count">{likeCount}</span>
+          </button>
+          <button className="share-action" onClick={handleShare}>
+            <FaShareAlt />
+          </button>
+        </div>
+      </div>
+      
       <Card.Body>
+        <div className="creator-info">
+          <div className="creator-avatar">
+            <FaUserCircle size={20} color="#4637B8" />
+          </div>
+          <span className="creator-name">{formatAddress(nft.creator)}</span>
+        </div>
+        
         <Card.Title>{nft.name}</Card.Title>
-        <div className="d-flex justify-content-between align-items-center mb-2">
-          <div>
-            {renderAuctionStatus()}
-          </div>
-          <div>
-            <small className="text-muted">Asset: {nft.assetCode}</small>
-          </div>
+        
+        <div className="description-text">
+          {nft.description}
         </div>
-        <Card.Text className="mb-2 description-text">
-          {nft.description?.length > 100 
-            ? `${nft.description.substring(0, 100)}...` 
-            : nft.description || 'No description provided'}
-        </Card.Text>
         
-        {nft.type === 'fixed_price' && (
-          <div className="price-tag">Price: {nft.price} XLM</div>
-        )}
-        
-        {nft.type === 'open_bid' && (
-          <div className="price-tag">Minimum Bid: {nft.minimumBid} XLM</div>
-        )}
-        
-        {nft.type === 'timed_auction' && (
-          <div className="price-tag">Starting Price: {nft.startingPrice || nft.price} XLM</div>
-        )}
-        
-        {highestBid && (
-          <div className="highest-bid mt-2">
-            Highest Bid: {highestBid.bidAmount} XLM
-            <br />
-            <small className="text-muted">
-              by: {highestBid.bidderPublicKey && highestBid.bidderPublicKey.substring(0, 8)}...
-            </small>
+        <div className="price-container">
+          <div className="price-tag">
+            <FaEthereum />
+            <div>
+              <span className="price-label">Price</span>
+              <div className="price-value">{nft.price} XLM</div>
+            </div>
           </div>
-        )}
-
-        {!isOwner && (nft.type === 'open_bid' || (nft.type === 'timed_auction' && !auctionEnded)) && nft.type !== 'fixed_price' && (
-          <div className="bid-form">
-            <Form.Group>
-              <Form.Label>Your Bid (XLM)</Form.Label>
-              <Row className="g-2">
-                <Col xs={8}>
-                  <Form.Control
-                    type="number"
-                    placeholder="Enter bid amount"
-                    value={bidAmount}
-                    onChange={(e) => setBidAmount(e.target.value)}
-                    disabled={loading}
-                    min={nft.minimumBid || "0.0000001"}
-                    step="0.0000001"
-                  />
-                  {bidError && <div className="text-danger mt-1 small">{bidError}</div>}
-                </Col>
-                <Col xs={4}>
-                  <Button 
-                    variant="primary" 
-                    onClick={handleBid} 
-                    disabled={loading || !isConnected}
-                    className="w-100 d-flex justify-content-center align-items-center"
-                  >
-                    {loading ? <Spinner animation="border" size="sm" /> : 'Bid'}
-                  </Button>
-                </Col>
-              </Row>
-            </Form.Group>
-          </div>
-        )}
-
-        <div className="d-flex justify-content-between mt-auto pt-2">
-          {(nft.type === 'open_bid' || nft.type === 'timed_auction') && (
-            <Button
-              variant="outline-primary"
-              size="sm"
-              onClick={() => {
-                setShowBidsModal(true);
-                fetchBids(); // Refresh bids when modal is opened
-              }}
-              disabled={loading}
-              className="px-2 py-1"
-            >
-              <FaListUl className="me-1" /> Bids ({bids.length})
-            </Button>
-          )}
           
-          {isOwner && (
-            <>
-              {nft.type === 'open_bid' && bids.length > 0 && (
-                <Button
-                  variant="success"
-                  size="sm"
-                  onClick={() => handleAcceptBid(bids[0])}
-                  disabled={loading}
-                  className="px-2 py-1"
-                >
-                  <FaCheck className="me-1" /> Accept
-                </Button>
-              )}
-              
-              {nft.type === 'timed_auction' && auctionEnded && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleFinalizeAuction}
-                  disabled={loading}
-                  className="px-2 py-1"
-                >
-                  <FaGavel className="me-1" /> Finalize
-                </Button>
-              )}
-              
-              {nft.type === 'timed_auction' && !auctionEnded && (
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={handleCancelAuction}
-                  disabled={loading}
-                  className="px-2 py-1"
-                >
-                  <FaTimes className="me-1" /> Cancel
-                </Button>
-              )}
-            </>
+          {highestBid && (
+            <div className="highest-bid">
+              <FaGavel className="me-2" />
+              <div>
+                <span className="highest-bid-label">Highest bid</span>
+                <div className="highest-bid-value">{highestBid.bidAmount} XLM</div>
+              </div>
+            </div>
           )}
         </div>
+        
+        {timeRemaining && (
+          <div className="time-remaining">
+            <FaRegClock />
+            <span>{timeRemaining}</span>
+          </div>
+        )}
+        
+        {renderBidForm()}
+        
+        {bids.length > 0 && (
+          <Button 
+            variant="outline-primary" 
+            size="sm" 
+            className="view-bids-button mt-2"
+            onClick={() => setShowBidsModal(true)}
+          >
+            <FaListUl className="me-1" /> View {bids.length} Bids
+          </Button>
+        )}
       </Card.Body>
-
+      
       {/* Bids Modal */}
       <Modal show={showBidsModal} onHide={() => setShowBidsModal(false)} centered>
         <Modal.Header closeButton>
@@ -581,53 +435,87 @@ const AuctionCard = ({ nft, onBidPlaced, refreshNFTs }) => {
         </Modal.Header>
         <Modal.Body>
           {loadingBids ? (
-            <div className="text-center p-4">
+            <div className="text-center py-4">
               <Spinner animation="border" variant="primary" />
               <p className="mt-3">Loading bids...</p>
             </div>
           ) : bids.length === 0 ? (
-            <div className="text-center p-4">
-              <FaGavel size={40} className="text-muted mb-3" />
-              <p className="lead">No bids yet</p>
-              <p className="text-muted">Be the first to place a bid!</p>
-            </div>
+            <p className="text-center py-3">No bids placed yet.</p>
           ) : (
             <div className="bids-list">
               {bids.map((bid, index) => (
-                <div key={bid.id || index} className="bid-item p-3 mb-2">
+                <div key={index} className="bid-item">
                   <div className="d-flex justify-content-between align-items-center">
                     <div>
-                      <div className="fw-bold">{bid.bidAmount} XLM</div>
-                      <small className="text-muted d-block">
-                        From: {bid.bidderPublicKey && bid.bidderPublicKey.substring(0, 10)}...
-                      </small>
-                      {bid.timestamp && (
-                        <small className="d-block text-muted">
-                          <FaRegClock className="me-1" size={12} /> {new Date(bid.timestamp).toLocaleString()}
-                        </small>
-                      )}
+                      <div className="bidder-address">
+                        <FaUserCircle className="me-2" />
+                        {formatAddress(bid.bidderPublicKey)}
+                      </div>
+                      <div className="bid-date">
+                        {new Date(bid.timestamp).toLocaleString()}
+                      </div>
                     </div>
-                    {isOwner && (
-                      <Button 
-                        variant="outline-success" 
-                        size="sm"
-                        onClick={() => handleAcceptBid(bid)}
-                        disabled={loading}
-                      >
-                        <FaCheck className="me-1" /> Accept
-                      </Button>
-                    )}
+                    <div className="bid-amount">
+                      {bid.bidAmount} XLM
+                    </div>
                   </div>
+                  
+                  {isOwner && !auctionEnded && index === 0 && (
+                    <div className="mt-2">
+                      <Button 
+                        variant="success" 
+                        size="sm" 
+                        onClick={() => handleAcceptBid(bid)}
+                        className="w-100"
+                      >
+                        <FaCheck className="me-1" /> Accept Bid
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowBidsModal(false)}>
-            Close
-          </Button>
-        </Modal.Footer>
+      </Modal>
+      
+      {/* Share Modal */}
+      <Modal show={showShareModal} onHide={() => setShowShareModal(false)} centered size="sm">
+        <Modal.Header closeButton>
+          <Modal.Title>Share this NFT</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="d-flex justify-content-center gap-3 py-3">
+            <Button variant="outline-primary" onClick={() => shareToSocial('twitter')} className="rounded-circle p-2">
+              <FaTwitter size={20} />
+            </Button>
+            <Button variant="outline-primary" onClick={() => shareToSocial('facebook')} className="rounded-circle p-2">
+              <FaFacebook size={20} />
+            </Button>
+            <Button variant="outline-success" onClick={() => shareToSocial('whatsapp')} className="rounded-circle p-2">
+              <FaWhatsapp size={20} />
+            </Button>
+          </div>
+          <div className="mt-3">
+            <Form.Control
+              type="text"
+              value={window.location.href}
+              readOnly
+              onClick={(e) => e.target.select()}
+            />
+            <div className="d-grid mt-2">
+              <Button 
+                variant="outline-secondary" 
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  toast.success('Link copied to clipboard!');
+                }}
+              >
+                <FaCopy className="me-2" /> Copy Link
+              </Button>
+            </div>
+          </div>
+        </Modal.Body>
       </Modal>
     </Card>
   );

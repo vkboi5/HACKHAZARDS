@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
-import { FaHeart, FaShareAlt } from 'react-icons/fa';
+import { Modal, Button, Form, Row, Col, Badge } from 'react-bootstrap';
+import { FaHeart, FaShareAlt, FaTwitter, FaFacebook, FaWhatsapp, FaWallet, FaTag, FaUserCircle } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { useWalletConnect } from './WalletConnectProvider';
 import * as StellarSdk from '@stellar/stellar-sdk';
@@ -17,6 +17,7 @@ const ItemDetailsModal = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [showShareOptions, setShowShareOptions] = useState(false);
   const { publicKey, isConnected, signAndSubmitTransaction } = useWalletConnect();
 
   // Consistent price validation
@@ -130,6 +131,12 @@ const ItemDetailsModal = ({
     }
     
     window.open(shareUrl, '_blank');
+    setShowShareOptions(false);
+  };
+
+  const formatAddress = (address) => {
+    if (!address) return 'Unknown';
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
   
   if (!item) return null;
@@ -152,16 +159,39 @@ const ItemDetailsModal = ({
           </div>
           <div className="nft-modal-info">
             <h3>{item.name}</h3>
+            
+            <div className="nft-details-row">
+              <div className="creator-badge">
+                <FaUserCircle size={20} style={{ marginRight: '8px', color: '#4637B8' }} />
+                <span className="detail-label">Creator:</span>
+                <span className="detail-value" style={{ marginLeft: '8px' }}>{formatAddress(item.creator)}</span>
+              </div>
+              {item.type && (
+                <Badge 
+                  bg={item.type === 'fixed_price' ? 'primary' : item.type === 'open_bid' ? 'info' : 'secondary'}
+                  style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                >
+                  {item.type === 'fixed_price' ? 'Fixed Price' : item.type === 'open_bid' ? 'Open for Bids' : 'Auction'}
+                </Badge>
+              )}
+            </div>
+            
             <p className="nft-description">{item.description}</p>
             
             <div className="nft-details-row">
-              <span className="detail-label">Creator:</span>
-              <span className="detail-value">{item.creator ? item.creator.slice(0, 6) + '...' + item.creator.slice(-4) : 'Unknown'}</span>
+              <div className="d-flex align-items-center">
+                <FaTag size={16} style={{ marginRight: '8px', color: '#4637B8' }} />
+                <span className="detail-label">Price:</span>
+              </div>
+              <span className="detail-value price">{item.price || '0'} XLM</span>
             </div>
             
             <div className="nft-details-row">
-              <span className="detail-label">Price:</span>
-              <span className="detail-value price">{item.price || '0'} XLM</span>
+              <div className="d-flex align-items-center">
+                <FaWallet size={16} style={{ marginRight: '8px', color: '#4637B8' }} />
+                <span className="detail-label">Asset Code:</span>
+              </div>
+              <span className="detail-value">{item.assetCode || 'N/A'}</span>
             </div>
             
             {item.attributes && item.attributes.length > 0 && (
@@ -189,33 +219,38 @@ const ItemDetailsModal = ({
                 variant="success"
                 onClick={handleBuy}
                 disabled={isLoading || !isConnected || !validatePrice(item.price) || !item.assetCode || !item.creator || !StellarSdk.StrKey.isValidEd25519PublicKey(item.creator)}
-                className="buy-button mb-3"
+                className="buy-button"
               >
-                {isLoading ? 'Buying...' : `Buy for ${item.price} XLM`}
+                {isLoading ? 'Processing...' : `Buy for ${item.price} XLM`}
               </Button>
               
-              <Form onSubmit={handleBidSubmit}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Place a bid (XLM)</Form.Label>
-                  <Form.Control
-                    type="number"
-                    placeholder="Enter bid amount"
-                    value={bidAmount}
-                    onChange={(e) => setBidAmount(e.target.value)}
-                    min="0"
-                    step="0.001"
-                  />
-                </Form.Group>
-                <Button variant="primary" type="submit" className="bid-button">
-                  Place Bid
-                </Button>
-              </Form>
+              {item.type === 'open_bid' && (
+                <Form onSubmit={handleBidSubmit} className="bid-form">
+                  <Form.Group className="mb-3">
+                    <Form.Label>Place a bid (XLM)</Form.Label>
+                    <Form.Control
+                      type="number"
+                      placeholder="Enter bid amount"
+                      value={bidAmount}
+                      onChange={(e) => setBidAmount(e.target.value)}
+                      required
+                      min="0.0000001"
+                      step="0.0000001"
+                    />
+                  </Form.Group>
+                  <div className="d-grid">
+                    <Button variant="primary" type="submit" disabled={!isConnected}>
+                      Place Bid
+                    </Button>
+                  </div>
+                </Form>
+              )}
               
               <div className="additional-actions">
                 <Button 
                   variant="outline-primary" 
                   className="action-button"
-                  onClick={() => handleShare('twitter')}
+                  onClick={() => setShowShareOptions(!showShareOptions)}
                 >
                   <FaShareAlt /> Share
                 </Button>
@@ -223,15 +258,29 @@ const ItemDetailsModal = ({
                   variant="outline-danger" 
                   className="action-button"
                 >
-                  <FaHeart /> {item.likes || 0}
+                  <FaHeart /> Add to Favorites
                 </Button>
               </div>
+              
+              {showShareOptions && (
+                <div className="share-options">
+                  <button onClick={() => handleShare('twitter')} className="share-button twitter">
+                    <FaTwitter />
+                  </button>
+                  <button onClick={() => handleShare('facebook')} className="share-button facebook">
+                    <FaFacebook />
+                  </button>
+                  <button onClick={() => handleShare('whatsapp')} className="share-button whatsapp">
+                    <FaWhatsapp />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </Modal.Body>
     </Modal>
   );
-};
+}
 
 export default ItemDetailsModal;
