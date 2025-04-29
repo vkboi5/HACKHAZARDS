@@ -1,166 +1,143 @@
-![github-submission-banner](https://github.com/user-attachments/assets/a1493b84-e4e2-456e-a791-ce35ee2bcf2f)
+# Web3 based Digital NFT MarketPlace for Artisans and Collectors
 
-# 🚀 Galerie - Stellar NFT Marketplace
+## Technology Stack & Tools
+- [Solidity](https://docs.soliditylang.org/en/latest/) (Writing Smart Contract)
+- [Javascript](https://developer.mozilla.org/en-US/docs/Web/JavaScript) (React & Testing)
+- [Ethers](https://docs.ethers.io/v5/) (Blockchain Interaction)
+- [Hardhat](https://hardhat.org/) (Development Framework)
+- [Ipfs](https://ipfs.io/) (Metadata storage)
+- [React routers](https://v5.reactrouter.com/) (Navigational components)
 
-> Revolutionizing digital art ownership through Stellar blockchain technology
+## Requirements For Initial Setup
+- Install [NodeJS](https://nodejs.org/en/), should work with any node version below 16.5.0
+- Install [Hardhat](https://hardhat.org/)
 
----
 
-## 📌 Problem Statement
+## Setting Up
+### 1. Clone/Download the Repository
 
-**Problem Statement 6 – Implementing Stellar Technologies**
-
----
-
-## 🎯 Objective
-
-Galerie addresses the challenge of accessible and efficient NFT creation and trading on the Stellar blockchain. Traditional NFT platforms often have high gas fees and technical barriers, making them inaccessible to many artists and collectors.
-
-Our marketplace provides a user-friendly platform for artists to tokenize their digital art as NFTs on Stellar's energy-efficient blockchain with minimal fees. For collectors, we offer a curated marketplace to discover, collect, and trade unique digital assets while ensuring proper attribution and royalties for creators.
-
----
-
-## 🧠 Team & Approach
-
-### Team Name:  
-`StellarMinds`
-
-### Team Members:  
-- Sarang Kadukar (Frontend Developer)  
-- T.V.Vishalkirthik (Backend Developer)    
-
-### Your Approach:  
-- We chose this problem to democratize NFT technology by leveraging Stellar's low-cost, fast, and energy-efficient blockchain.
-- Key challenges addressed include seamless wallet integration, metadata management for NFTs, and creating an intuitive user experience for non-technical users.
-- During development, we pivoted from a complex multi-blockchain approach to focus exclusively on Stellar, allowing us to create a more cohesive and optimized user experience.
-
----
-
-## 🛠️ Tech Stack
-
-### Core Technologies Used:
-- Frontend: React.js, React Router, Bootstrap, CSS3
-- Backend: Node.js, Express
-- Storage: IPFS via Pinata for decentralized metadata and image storage
-- Blockchain: Stellar SDK (v13.2.0) for token issuance and management
-- Wallet Integration: Freighter API (v4.1.0) for seamless wallet connection
-- APIs: Stellar Horizon API for blockchain interactions
-
-### Sponsor Technologies Used:
-- [✅] **Stellar:** Used for NFT issuance, wallet integration, token transfers, and marketplace transactions
-
----
-
-## ✨ Key Features
-
-- ✅ **Seamless Stellar Wallet Integration**: Connect with Freighter wallet to create, buy, and sell NFTs
-- ✅ **User-Friendly NFT Creation**: Simple interface to mint NFTs on Stellar with just a few clicks
-- ✅ **Decentralized Content Storage**: All NFT metadata and images stored on IPFS via Pinata for permanence
-- ✅ **Robust Transaction Management**: Secure signing and submitting of Stellar transactions
-- ✅ **Marketplace Listings**: List and browse NFTs with detailed metadata and pricing
-- ✅ **Social Engagement**: Like and interact with NFT listings to boost visibility
-- ✅ **Featured Collections**: Curated display of top NFT collections on the platform
-- ✅ **Mobile-Responsive Interface**: Fully functional on all device sizes
-
----
-
-## 📽️ Demo & Deliverables
-
-- **Demo Video Link:** [Coming Soon]  
-- **Pitch Deck Link:** [Coming Soon]  
-
----
-
-## ✅ Tasks & Bonus Checklist
-
-- [✅] **All members of the team completed the mandatory task - Followed at least 2 of our social channels and filled the form**
-- [✅] **All members of the team completed Bonus Task 1 - Sharing of Badges and filled the form (2 points)**
-- [✅] **All members of the team completed Bonus Task 2 - Signing up for Sprint.dev and filled the form (3 points)**
-
----
-
-## 🧪 How to Run the Project
-
-### Requirements:
-- Node.js v16+ 
-- Stellar account (testnet for development)
-- Pinata API keys for IPFS storage
-- Freighter browser extension installed (Chrome or Firefox)
-
-### Local Setup:
-```bash
-# Clone the repo
-git clone https://github.com/your-team/galerie-nft-marketplace
-
-# Install dependencies
-cd galerie-nft-marketplace
-npm install
-
-# Configure environment variables
-# Create a .env file with the following:
-REACT_APP_STELLAR_NETWORK=TESTNET
-REACT_APP_HORIZON_URL=https://horizon-testnet.stellar.org
-REACT_APP_STELLAR_ISSUER_PUBLIC_KEY=your_issuer_public_key
-REACT_APP_STELLAR_ISSUER_SECRET_KEY=your_issuer_secret_key
-REACT_APP_PINATA_API_KEY=your_pinata_api_key
-REACT_APP_PINATA_API_SECRET=your_pinata_api_secret
-REACT_APP_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs/
-
-# Start development server
-npm start
+### 2. Install Dependencies:
 ```
-
-### Installation Troubleshooting
-
-If you encounter issues with dependencies:
-
-```bash
-# Clear npm cache and reinstall
-npm cache clean --force
-npm install
-
-# If you're using Yarn
-yarn cache clean
-yarn install
+$ cd Galerie
+// Please delete the yarn.lock file
 ```
+### 3. Install Dependencies:
+```
+// Also after deleting yarn.lock run this command 
+if yarn 
+$ yarn cache clean
 
-For issues with Freighter wallet connection:
-1. Ensure the Freighter extension is properly installed
-2. Check that your Freighter wallet is unlocked
-3. Make sure you're on the correct network (Testnet for development)
+if npm 
+$ npm cache clean
 
----
+$ npm install or yarn 
 
-## 🧬 Future Scope
+//if you face installing problems 
+execute,  $yarn add --force  or $npm install --force
+if that didn't work, try
+$yarn add --legacy-peer-deps or $npm install --legacy-peer-deps
 
-- 📈 **Multi-collection Support**: Enable creators to organize NFTs into themed collections
-- 🛡️ **Enhanced Security**: Implement multisig authorization for high-value NFT transactions
-- 🌐 **Cross-chain Bridge**: Enable interoperability with other blockchains like Ethereum
-- 💰 **Auction Functionality**: Add timed auctions with automatic settlement
-- 🔍 **Advanced Search & Discovery**: Implement AI-based recommendation system for NFT discovery
-- 🔄 **Batch Operations**: Support for minting and managing multiple NFTs in a single transaction
-- 📱 **Mobile Application**: Native mobile apps for iOS and Android platforms
+//if you face network issues
+execute,  $yarn install --network-timeout 1000000
+          
+```
+### 4. Set up Environment Variables 
 
----
+⚠️ **SECURITY WARNING: Proper configuration of environment variables is critical for both functionality and security.**
 
-## 📎 Resources / Credits
+1. Copy the .env.example file to a new file named .env:
+   ```
+   $ cp .env.example .env
+   ```
 
-- [Stellar Developer Documentation](https://developers.stellar.org/docs)
-- [Stellar Laboratory](https://laboratory.stellar.org/) for testing transactions
-- [Freighter Wallet](https://www.freighter.app/) for Stellar account management
-- [IPFS & Pinata](https://pinata.cloud/) for decentralized storage
-- [React Icons](https://react-icons.github.io/react-icons/) for UI elements
-- Special thanks to the Stellar Development Foundation for their support and documentation
+2. Update the .env file with your own API keys and credentials:
 
----
+   - **Pinata IPFS Storage Configuration**:
+     1. Create an account at [Pinata Cloud](https://app.pinata.cloud)
+     2. Generate API keys at [Pinata Keys](https://app.pinata.cloud/keys)
+     3. Add to your .env file:
+        ```
+        REACT_APP_PINATA_API_KEY=your-pinata-api-key
+        REACT_APP_PINATA_API_SECRET=your-pinata-api-secret
+        ```
 
-## 🏁 Final Words
+   - **Ethereum Configuration**:
+     1. Create an account at [Infura](https://infura.io) 
+     2. Create a new project and copy your API key
+     3. Add to your .env file:
+        ```
+        REACT_APP_INFURA_KEY=your-infura-project-id
+        SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/your-infura-project-id
+        ```
+     4. For Ethereum transaction signing:
+        ```
+        PRIVATE_KEY=your-ethereum-private-key
+        ```
+     5. For contract verification (optional):
+        ```
+        ETHERSCAN_API_KEY=your-etherscan-api-key
+        ```
 
-Building Galerie has been an incredible journey of discovery in the world of Stellar blockchain technology. Our team faced numerous challenges in working with custom assets and metadata on Stellar, but the platform's efficiency and low costs have proven it to be an excellent choice for NFT applications.
+   - **Stellar Configuration**:
+     1. Generate keys using [Stellar Laboratory](https://laboratory.stellar.org/#account-creator)
+     2. Add to your .env file:
+        ```
+        REACT_APP_STELLAR_ISSUER_PUBLIC_KEY=your-stellar-public-key
+        REACT_APP_STELLAR_ISSUER_SECRET_KEY=your-stellar-secret-key
+        ```
 
-We're excited about the potential of bringing more artists and collectors into the world of digital ownership through the accessibility that Stellar provides. This hackathon has been a fantastic opportunity to push the boundaries of what's possible with blockchain technology while keeping the user experience simple and engaging.
+3. **CRITICAL SECURITY PRACTICES**:
+   - `.env` is in `.gitignore` for a reason - NEVER commit it to version control
+   - Store backups of your `.env` file securely (password manager or encrypted storage)
+   - Rotate credentials regularly (every 30-90 days)
+   - Use different API keys for development and production
+   - If you accidentally expose your credentials, regenerate ALL of them immediately
 
----
+4. After updating your `.env` file, restart your development server:
+   ```
+   $ npm run start
+   ```
+
+### 5. Boot up local development blockchain
+```
+$ cd Galerie
+$ npx hardhat node
+```
+- It's necessary to bootup the local blockchain network before setting up your metmask Network configurations for Hardhat! 
+
+### 6. Download Metamask Browser Extension
+- Ensure you correctly setup the Extension according to step 7 for proper working of the application
+
+### 7. Connect development blockchain accounts to Metamask Browser Extension
+- Copy private key of the addresses from the terminal
+- Click on the account dropdown of Metamaks on top and you can select other accounts if you have one
+- Click on Add account or hardware wallet and select Import Account and then enter that private key in the input box
+- You have to navigate into Metamask account and connect your Metamask to hardhat blockchain, network 127.0.0.1:8545.
+- If you have not added hardhat to the list of networks on your Metamask, open up a browser, click the fox icon, then click the top center dropdown button that lists all the available networksform should pop up then click add networks. A . For the "Network Name" field enter "Hardhat". For the "New RPC URL" field enter "http://127.0.0.1:8545". For the chain ID enter "31337". Then click save.  
+
+
+### 8. Migrate Smart Contracts
+`npx hardhat run src/backend/scripts/deploy.js --network https://galerie-one.vercel.app`
+
+### 9. Run Tests
+`$ npx hardhat test`
+- Don't worry if tests fails, it won't affect the main workflow
+
+
+### 10. Launch Frontend
+`$ npm run start`
+
+To test as a telegram mini app, install cloudflare extension on VSCode and start it to obtain public accessible URL , use that URL to setup the telegram mini app through
+bot.js file or through botfather.
+
+Also we have deployed our smart contracts on sepolia testnet so
+the marketplace and other functionalities would work on this testnet or on default hardhat network.
+
+Hopefully your telegram mini app should start without any errors! 
+
+Check out our telegram mini app: [Click here!](https://t.me/Galeries_Telegram_Mini_App_Bot) 
+//If you are accessing app through telegram please note that sometimes connecting to wallet and making transactions will be
+tough and time-consuming , so patience is a key here!
 
 ## Environment Variables and Security
 
@@ -176,19 +153,10 @@ This project uses environment variables for configuration. We've provided a `.en
    REACT_APP_PINATA_API_SECRET=your_pinata_api_secret
    ```
 
-### Stellar Account Configuration
-
-For Stellar operations, you'll need:
-1. A funded Stellar account on testnet (or mainnet for production)
-2. Set your issuer and distribution account keys in `.env`:
-   ```
-   REACT_APP_STELLAR_ISSUER_PUBLIC_KEY=your_issuer_public_key
-   REACT_APP_STELLAR_ISSUER_SECRET_KEY=your_issuer_secret_key
-   ```
-
-### Troubleshooting
+### Troubleshooting Pinata Issues
 
 If you encounter issues with Pinata uploads:
+
 1. Verify your API keys are correct in the `.env` file
 2. Check that your Pinata account has sufficient storage space
 3. Ensure your network connection is stable

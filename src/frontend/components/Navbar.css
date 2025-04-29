@@ -195,3 +195,28 @@
 .navbar-toggler-icon {
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 1%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") !important;
 }
+
+.wallet-status-indicator {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+    transition: all 0.3s ease;
+}
+
+.wallet-status-indicator:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.wallet-status-indicator .badge {
+    font-weight: 500;
+    padding: 4px 8px;
+}
+
+.wallet-status-indicator .text-muted {
+    color: rgba(255, 255, 255, 0.8) !important;
+    font-family: monospace;
+    font-size: 0.9rem;
+}

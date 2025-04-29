@@ -64,8 +64,8 @@ class StellarService {
   async validateEnvironmentVariables() {
     console.log('[INIT] Validating environment variables...');
     const requiredVars = {
-      'REACT_APP_HORIZON_URL': process.env.REACT_APP_HORIZON_URL,
-      'REACT_APP_STELLAR_NETWORK': process.env.REACT_APP_STELLAR_NETWORK,
+      'REACT_APP_HORIZON_URL': import.meta.env.VITE_HORIZON_URL,
+      'REACT_APP_STELLAR_NETWORK': import.meta.env.VITE_STELLAR_NETWORK,
       'STELLAR_ISSUER_PUBLIC_KEY': process.env.STELLAR_ISSUER_PUBLIC_KEY,
       'STELLAR_ISSUER_SECRET_KEY': process.env.STELLAR_ISSUER_SECRET_KEY
     };

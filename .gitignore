@@ -37,3 +37,5 @@ typechain
 #Hardhat files
 cache
 artifacts
+
+console-error.txt
