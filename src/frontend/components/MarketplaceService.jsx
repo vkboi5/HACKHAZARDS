@@ -1,5 +1,6 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
 import axios from 'axios';
+import { toast } from 'react-hot-toast';
 
 // Environment variables
 const HORIZON_URL = import.meta.env.VITE_HORIZON_URL || 'https://horizon-testnet.stellar.org';
@@ -165,10 +166,44 @@ class MarketplaceService {
 
       const builtTx = transaction.setTimeout(180).build();
       const xdr = builtTx.toXDR();
+      
+      console.log('Calling signAndSubmitTransaction with XDR:', {
+        xdrLength: xdr.length,
+        xdrPreview: xdr.substring(0, 50) + '...'
+      });
+      
       const result = await signAndSubmitTransaction(xdr);
+      
+      console.log('SignAndSubmit result:', result);
+      
+      // Handle different response formats from different transaction signing methods
+      let transactionHash;
+      
+      if (result && typeof result === 'object') {
+        // Extract the transaction hash from the result
+        if (result.hash) {
+          transactionHash = result.hash;
+        } else if (result.transactionHash) {
+          transactionHash = result.transactionHash;
+        } else if (result.id) {
+          transactionHash = result.id;
+        } else if (typeof result.toString === 'function') {
+          // Try to get a string representation
+          transactionHash = result.toString();
+        } else {
+          // Fallback to using the entire object
+          transactionHash = JSON.stringify(result);
+        }
+      } else if (typeof result === 'string') {
+        // The result is already a string (maybe a hash)
+        transactionHash = result;
+      } else {
+        // Unknown format, just store as 'success'
+        transactionHash = 'success';
+      }
 
-      console.log('Buy NFT transaction successful:', result);
-      return result;
+      console.log('Buy NFT transaction successful:', { transactionHash });
+      return { success: true, transactionHash };
     } catch (error) {
       console.error('Buy NFT error:', error);
       if (error.response?.data?.extras?.result_codes) {

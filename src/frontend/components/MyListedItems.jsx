@@ -12,6 +12,9 @@ import './MyListedItems.css';
 import loaderGif from './loader.gif';
 import { Container, Row, Col, Card, Button, Alert, Spinner } from 'react-bootstrap';
 
+// Define a local placeholder image as a data URI to avoid external requests
+const placeholderImg = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAMAAABOo35HAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyBpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMC1jMDYwIDYxLjEzNDc3NywgMjAxMC8wMi8xMi0xNzo0MDowMCAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENTNSBXaW5kb3dzIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOjQ5MzAyRDQ5MDk5RDExRUJCODZBQzQyRDM0MUE1OThEIiB4bXBNTTpEb2N1bWVudElEPSJ4bXAuZGlkOjQ5MzAyRDRBMDk5RDExRUJCODZBQzQyRDM0MUE1OThEIj4gPHhtcE1NOkRlcml2ZWRGcm9tIHN0UmVmOmluc3RhbmNlSUQ9InhtcC5paWQ6NDkzMDJENDcwOTlEMTFFQkI4NkFDNDJEMzQxQTU5OEQiIHN0UmVmOmRvY3VtZW50SUQ9InhtcC5kaWQ6NDkzMDJENDgwOTlEMTFFQkI4NkFDNDJEMzQxQTU5OEQiLz4gPC9yZGY6RGVzY3JpcHRpb24+IDwvcmRmOlJERj4gPC94OnhtcG1ldGE+IDw/eHBhY2tldCBlbmQ9InIiPz7RDHxNAAAABlBMVEXR0dGzs7Pl+2dhAAAAHElEQVR42uzBAQ0AAADCIPuntscHAwAAAAAAAGACEkAAAcuJwlwAAAAASUVORK5CYII=';
+
 // Function to render sold items
 function renderSoldItems(items) {
   return (
@@ -25,7 +28,8 @@ function renderSoldItems(items) {
               alt={item.name}
               className="card-img"
               onError={(e) => {
-                e.target.src = 'https://via.placeholder.com/300';
+                e.target.onerror = null; // Prevent infinite loop
+                e.target.src = placeholderImg;
               }}
             />
             <div className="card-footer-custom">
@@ -213,7 +217,7 @@ export default function MyListedItems() {
             // Initialize metadata
             let detailedMetadata = { 
               name: assetCode, 
-              image: 'https://via.placeholder.com/300', 
+              image: placeholderImg,
               description: '' 
             };
 
@@ -235,7 +239,9 @@ export default function MyListedItems() {
                       name: response.data.name || metadata.name || assetCode,
                       description: response.data.description || '',
                       image: response.data.image || metadata.url,
-                      creator: response.data.creator || publicKey
+                      creator: response.data.creator || publicKey,
+                      // Extract price from metadata if available
+                      price: response.data.price || metadata.price || ''
                     };
 
                     // Handle IPFS image URLs
@@ -247,6 +253,7 @@ export default function MyListedItems() {
                   } else {
                     detailedMetadata.image = metadata.url;
                     detailedMetadata.name = metadata.name || assetCode;
+                    detailedMetadata.price = metadata.price || '';
                   }
                   console.log(`Successfully processed metadata for ${assetCode}:`, detailedMetadata);
                 }
@@ -268,7 +275,10 @@ export default function MyListedItems() {
               name: detailedMetadata.name,
               description: detailedMetadata.description,
               image: detailedMetadata.image,
-              price: hasOffer ? offersMap[assetKey][0].price : '0',
+              price: hasOffer ? offersMap[assetKey][0].price : (
+                // Check if price is in the metadata
+                detailedMetadata.price || metadata.price || '0'
+              ),
               offerId: hasOffer ? offersMap[assetKey][0].id : null,
               asset: asset,
               balance: assetBalance,
@@ -286,7 +296,8 @@ export default function MyListedItems() {
             // Add to appropriate array
             if (isSold) {
               console.log(`Adding ${assetCode} to sold items (balance is 0)`);
-              soldItemsArray.push({ ...item, price: '0' });
+              // Don't override the price when adding to sold items
+              soldItemsArray.push(item);
             } else {
               console.log(`Adding ${assetCode} to listed items (hasOffer=${hasOffer})`);
               listedItemsArray.push(item);
@@ -314,7 +325,7 @@ export default function MyListedItems() {
 
   // Parse metadata string
   const parseMetadata = (metadataStr, assetCode) => {
-    const metadata = { name: assetCode, url: '' };
+    const metadata = { name: assetCode, url: '', price: '' };
     console.log(`Parsing metadata string for ${assetCode}: ${metadataStr}`);
 
     // Check if it's a direct IPFS CID (starting with 'bafk', 'Qm', or 'bafy')
@@ -327,9 +338,10 @@ export default function MyListedItems() {
       return metadata;
     }
 
-    // Try parsing as "Name: ..., URL: ..." format
+    // Try parsing as "Name: ..., URL: ..., Price: ..." format
     const nameMatch = metadataStr.match(/Name:\s*([^,]+)(?:,|$)/i) || metadataStr.match(/name:\s*([^,]+)(?:,|$)/i);
     const urlMatch = metadataStr.match(/URL:\s*([^\s]+)(?:,|$)/i) || metadataStr.match(/url:\s*([^\s]+)(?:,|$)/i);
+    const priceMatch = metadataStr.match(/Price:\s*(\d+(?:\.\d+)?)(?:,|$)/i) || metadataStr.match(/price:\s*(\d+(?:\.\d+)?)(?:,|$)/i);
 
     if (nameMatch) {
       metadata.name = nameMatch[1].trim();
@@ -357,6 +369,11 @@ export default function MyListedItems() {
       } else {
         console.warn('No URL found in metadata and not an IPFS CID');
       }
+    }
+
+    if (priceMatch) {
+      metadata.price = priceMatch[1].trim();
+      console.log(`Extracted price: ${metadata.price} XLM`);
     }
 
     return metadata;
@@ -526,7 +543,8 @@ export default function MyListedItems() {
                           alt={item.name}
                           className="card-img"
                           onError={(e) => {
-                            e.target.src = 'https://via.placeholder.com/300';
+                            e.target.onerror = null; // Prevent infinite loop
+                            e.target.src = placeholderImg;
                           }}
                         />
                         <div className="card-badge-container">
@@ -605,10 +623,20 @@ export default function MyListedItems() {
               {soldItems.length > 0 && renderSoldItems(soldItems)}
             </div>
           ) : (
-            <main style={{ padding: '1rem 0' }}>
-              <h2 className="section-title">No NFTs Found</h2>
-              <p>You haven't created or collected any NFTs yet.</p>
-            </main>
+            <div className="no-items-container">
+              {loading ? (
+                <div className="loading-container">
+                  <Spinner animation="border" role="status">
+                    <span className="sr-only">Loading...</span>
+                  </Spinner>
+                  <p>Loading your items...</p>
+                </div>
+              ) : (
+                <Alert variant="info">
+                  <p>You don't have any listed or sold items yet.</p>
+                </Alert>
+              )}
+            </div>
           )}
           {itemToDelete && (
             <Popup

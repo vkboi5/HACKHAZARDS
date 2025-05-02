@@ -224,6 +224,27 @@ export function Web3AuthProvider({ children }) {
       initializeWeb3Auth();
     }
     
+    // If already connected, ensure we dispatch a custom event to notify WalletContext
+    if (web3auth && web3auth.connected && publicKey) {
+      try {
+        console.log("Already connected, dispatching web3AuthLogin event for wallet sync");
+        const provider = web3auth.provider;
+        if (provider) {
+          provider.request({ method: "private_key" })
+            .then(privateKey => {
+              if (privateKey) {
+                window.dispatchEvent(new CustomEvent('web3AuthLogin', { 
+                  detail: { privateKey, publicKey: publicKey }
+                }));
+              }
+            })
+            .catch(err => console.error("Error getting private key for sync:", err));
+        }
+      } catch (e) {
+        console.error("Error dispatching sync event:", e);
+      }
+    }
+    
     // Check connection status on focus
     const handleFocus = () => {
       if (web3auth && web3auth.connected && !isConnected) {
@@ -237,6 +258,10 @@ export function Web3AuthProvider({ children }) {
                 const stellarPublicKey = await deriveStellarPublicKey(privateKey);
                 if (stellarPublicKey) {
                   setPublicKey(stellarPublicKey);
+                  // Dispatch event to synchronize wallet context
+                  window.dispatchEvent(new CustomEvent('web3AuthLogin', { 
+                    detail: { privateKey, publicKey: stellarPublicKey }
+                  }));
                 }
               }
             })
@@ -251,7 +276,7 @@ export function Web3AuthProvider({ children }) {
     return () => {
       window.removeEventListener('focus', handleFocus);
     };
-  }, [initializeWeb3Auth, web3auth, isConnected]);
+  }, [initializeWeb3Auth, web3auth, isConnected, publicKey]);
 
   // Login function
   const login = async () => {

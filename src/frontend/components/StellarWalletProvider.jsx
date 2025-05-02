@@ -12,6 +12,9 @@ export function useStellarWallet() {
   return useContext(StellarWalletContext);
 }
 
+// Define a small placeholder icon as data URI to avoid external requests
+const placeholderIcon = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAMAAAC7IEhfAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyhpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuNi1jMTQ1IDc5LjE2MzQ5OSwgMjAxOC8wOC8xMy0xNjo0MDoyMiAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTkgKE1hY2ludG9zaCkiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6MTY1OUZBREExRTlEMTFFQTlFRDJBQzA4REEzOTFDQ0IiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6MTY1OUZBREIxRTlEMTFFQTlFRDJBQzA4REEzOTFDQ0IiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDoxNjU5RkFEODFFOUQxMUVBOUVEMkFDMDhEQTM5MUNDQiIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDoxNjU5RkFEOTFFOUQxMUVBOUVEMkFDMDhEQTM5MUNDQiIvPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gPD94cGFja2V0IGVuZD0iciI/PnSpwLoAAABgUExURQAAANvb27m5uYmJidPT08LCwpmZmd7e3q2trZCQkPz8/FNTU/b29ri4uKqqqsbGxuLi4vDw8MTExNHR0ff399ra2uzs7KioqM3NzczMzJaWlp6entfX19jY2J+fn7Kysr9ccQMAAAAPdFJOU///////////////////////AOxDE9kAAAEDSURBVHjarNTXDsMgDIVhYpJ0j+y9x/s/ZmPcCpBwwBX918hyviPkpYRnJmW9A0BTWMxcc+fLllr2iQeAGrmhVQ3CKI3BQ5HJlUuXh2MdLLXeR3gWzZdlQ3QBELxbrgB8StD5GDiNxl4ADsZhkcZ1CeHj4KqH3yPF0H3YA1JQvJ8VRwUDYjDqA2fyFBwTKfoB6I+1/4UAcC7FhYb1BBv69TF4C9gp6ATsiSg1QdJGZKzAHnBEjF4AFrF5QYH5d4gAcKtB0aTmGVgqsNRga0y1fSKuNTN1jQCXVlS6oQJkBFjZRqtEUGAC/HNlXpqxYDiLrSfkY9qXHSKf5PZZ7cIw9vB8CjAA8tsR5IkKEhQAAAAASUVORK5CYII=';
+
 export function StellarWalletProvider({ children }) {
   const [publicKey, setPublicKey] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -606,7 +609,7 @@ export function StellarWalletProvider({ children }) {
                       alt="Freighter" 
                       onError={(e) => {
                         e.target.onerror = null;
-                        e.target.src = 'https://via.placeholder.com/40?text=F';
+                        e.target.src = placeholderIcon;
                       }}
                     />
                   </div>

@@ -94,36 +94,102 @@ export const retrieveWalletData = async (publicKey, userIdentifier) => {
       throw new Error('Public key is required');
     }
     
+    // Check if we have a local backup in sessionStorage first
+    const sessionKey = `wallet_backup_${publicKey}`;
+    const sessionBackup = sessionStorage.getItem(sessionKey);
+    if (sessionBackup) {
+      try {
+        return JSON.parse(sessionBackup);
+      } catch (e) {
+        console.warn('Invalid session backup, continuing to IPFS');
+      }
+    }
+    
     // Get the IPFS CID from localStorage
     const walletRefs = JSON.parse(localStorage.getItem('walletRefs') || '{}');
     const ipfsCid = walletRefs[publicKey];
     
     if (!ipfsCid) {
+      // Check if we have an alternative storage method available
+      const tempKey = localStorage.getItem('tempPrivateKey');
+      if (tempKey) {
+        // Create a wallet data object from the temp key
+        const walletData = {
+          privateKey: tempKey,
+          publicKey,
+          createdAt: new Date().toISOString(),
+          source: 'localStorage_fallback'
+        };
+        
+        // Try to store this in IPFS for next time
+        try {
+          await storeWalletData(publicKey, walletData, userIdentifier);
+          console.log('Created IPFS backup from localStorage key');
+        } catch (e) {
+          console.warn('Failed to create IPFS backup from localStorage key:', e);
+        }
+        
+        // Save to session as well
+        sessionStorage.setItem(sessionKey, JSON.stringify(walletData));
+        
+        return walletData;
+      }
+      
       throw new Error('No IPFS reference found for this wallet');
     }
     
-    // Fetch the data from IPFS (using a gateway)
-    const ipfsGatewayUrl = `https://gateway.pinata.cloud/ipfs/${ipfsCid}`;
-    const response = await axios.get(ipfsGatewayUrl);
+    // Try multiple IPFS gateways in case one fails
+    const ipfsGateways = [
+      `https://gateway.pinata.cloud/ipfs/${ipfsCid}`,
+      `https://ipfs.io/ipfs/${ipfsCid}`,
+      `https://cloudflare-ipfs.com/ipfs/${ipfsCid}`,
+      `https://dweb.link/ipfs/${ipfsCid}`
+    ];
     
-    if (response.status !== 200) {
-      throw new Error(`Failed to retrieve from IPFS: ${response.statusText}`);
+    let lastError = null;
+    for (const gatewayUrl of ipfsGateways) {
+      try {
+        const response = await axios.get(gatewayUrl, { timeout: 10000 });
+        
+        if (response.status === 200) {
+          const { encryptedData } = response.data.pinataContent;
+          
+          if (!encryptedData) {
+            console.warn(`No encrypted data found in IPFS from gateway: ${gatewayUrl}`);
+            continue;
+          }
+          
+          // Use the provided identifier or fall back to public key
+          const decryptionKey = userIdentifier || publicKey;
+          
+          // Decrypt the wallet data
+          const decryptedData = await decryptData(encryptedData, decryptionKey);
+          console.log('Wallet data retrieved and decrypted successfully from', gatewayUrl);
+          
+          // Store in session for quick access next time
+          sessionStorage.setItem(sessionKey, JSON.stringify(decryptedData));
+          
+          return decryptedData;
+        }
+      } catch (gatewayError) {
+        console.warn(`IPFS gateway ${gatewayUrl} failed:`, gatewayError.message);
+        lastError = gatewayError;
+      }
     }
     
-    const { encryptedData } = response.data.pinataContent;
-    
-    if (!encryptedData) {
-      throw new Error('No encrypted data found in IPFS');
+    // If all gateways failed, check localStorage one more time
+    const tempKey = localStorage.getItem('tempPrivateKey');
+    if (tempKey) {
+      const walletData = {
+        privateKey: tempKey,
+        publicKey,
+        createdAt: new Date().toISOString(),
+        source: 'localStorage_emergency_fallback'
+      };
+      return walletData;
     }
     
-    // Use the provided identifier or fall back to public key
-    const decryptionKey = userIdentifier || publicKey;
-    
-    // Decrypt the wallet data
-    const decryptedData = await decryptData(encryptedData, decryptionKey);
-    console.log('Wallet data retrieved and decrypted successfully');
-    
-    return decryptedData;
+    throw new Error(`All IPFS gateways failed: ${lastError?.message}`);
   } catch (error) {
     console.error('Error retrieving wallet data from IPFS:', error);
     throw error;

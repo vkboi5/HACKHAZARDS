@@ -759,7 +759,21 @@ const HomePage = ({ marketplace, walletBalance }) => {
       console.log("Initiating MoonPay purchase for item:", item.id);
       console.log("Current wallet state:", { isLoggedIn, publicKey });
       
-      await buyWithMoonpay(item.id, item.price);
+      // Create NFT details object with all necessary properties for MoonPay
+      const nftDetails = {
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        image: item.image,
+        price: item.price,
+        creator: item.creator,
+        contractAddress: item.contractAddress || `stellar:${item.id}`
+      };
+      
+      console.log('Initiating MoonPay NFT purchase with details:', nftDetails);
+      
+      // Pass the NFT details to MoonPay
+      await buyWithMoonpay(item.id, item.price, nftDetails);
       toast.success('Purchase initiated!', { position: 'top-center' });
     } catch (error) {
       console.error('Error buying NFT:', error);

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
-import { FaHeart, FaShareAlt } from 'react-icons/fa';
-import { toast } from 'react-toastify';
+import React, { useState, useEffect } from 'react';
+import { Modal, Button, Form, Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { FaHeart, FaShareAlt, FaInfoCircle } from 'react-icons/fa';
+import { toast } from 'react-hot-toast';
 import { useWalletConnect } from './WalletConnectProvider';
 import { useWallet } from '../../contexts/WalletContext';
+import { useWeb3Auth } from './Web3AuthProvider';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import MarketplaceService from './MarketplaceService';
 import './ItemDetailsModal.css';
@@ -19,13 +20,27 @@ const ItemDetailsModal = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   
-  // Get wallet state from both providers
-  const { publicKey: walletConnectKey, isConnected: isWalletConnected, signAndSubmitTransaction } = useWalletConnect();
-  const { publicKey: web3AuthKey, isLoggedIn: isWeb3AuthLoggedIn, buyWithMoonpay } = useWallet();
+  // Get wallet state from all providers
+  const { publicKey: walletConnectKey, isConnected: isWalletConnected, signAndSubmitTransaction: wcSignAndSubmit } = useWalletConnect();
+  const { publicKey: web3AuthKey, isLoggedIn: isWeb3AuthLoggedIn, buyWithMoonpay, stellarKit, signTransaction: web3AuthSignTransaction } = useWallet();
+  const { isConnected: isWeb3AuthDirectConnected } = useWeb3Auth();
   
   // Combined wallet state - use either connection
-  const isConnected = isWalletConnected || isWeb3AuthLoggedIn;
+  const isConnected = isWalletConnected || isWeb3AuthLoggedIn || isWeb3AuthDirectConnected;
   const publicKey = walletConnectKey || web3AuthKey;
+
+  // Debug log for authentication state
+  useEffect(() => {
+    if (isConnected) {
+      console.log('ItemDetailsModal - Authentication state:', {
+        walletConnectActive: isWalletConnected,
+        web3AuthActive: isWeb3AuthLoggedIn,
+        web3AuthDirectActive: isWeb3AuthDirectConnected,
+        publicKey,
+        stellarKitAvailable: !!stellarKit
+      });
+    }
+  }, [isConnected, isWalletConnected, isWeb3AuthLoggedIn, isWeb3AuthDirectConnected, publicKey, stellarKit]);
 
   // Consistent price validation
   const validatePrice = (price) => {
@@ -40,6 +55,39 @@ const ItemDetailsModal = ({
     }
     console.log('Validated price in ItemDetailsModal:', { input: price, output: formattedPrice });
     return formattedPrice;
+  };
+
+  // Determine the appropriate transaction signing function based on the auth method
+  const getSignAndSubmitFunction = () => {
+    if (isWalletConnected && wcSignAndSubmit) {
+      console.log('Using WalletConnect for transaction signing');
+      return wcSignAndSubmit;
+    } else if (isWeb3AuthLoggedIn && web3AuthSignTransaction) {
+      console.log('Using Web3Auth signTransaction for transaction signing');
+      return web3AuthSignTransaction;
+    } else if ((isWeb3AuthLoggedIn || isWeb3AuthDirectConnected) && stellarKit) {
+      console.log('Using Web3Auth Stellar Kit for transaction signing');
+      // Return a wrapper function that matches the expected signature
+      return async (xdr) => {
+        try {
+          if (!stellarKit) {
+            throw new Error('Stellar Kit not initialized');
+          }
+          
+          console.log('Signing transaction with Web3Auth Stellar Kit');
+          const result = await stellarKit.signTransaction(xdr);
+          console.log('Web3Auth transaction signing result:', result);
+          return result;
+        } catch (err) {
+          console.error('Error signing with Web3Auth:', err);
+          throw err;
+        }
+      };
+    }
+    
+    // Fallback - this should never be reached if buttons are properly disabled
+    console.error('No valid transaction signing method available');
+    throw new Error('No wallet connected for transaction signing');
   };
 
   const handleBuy = async () => {
@@ -75,6 +123,9 @@ const ItemDetailsModal = ({
     setError(null);
 
     try {
+      // Get the appropriate signing function
+      const signAndSubmitFunc = getSignAndSubmitFunction();
+      
       console.log('Before buyNFT:', {
         assetCode: item.assetCode,
         price: validatedPrice,
@@ -82,13 +133,15 @@ const ItemDetailsModal = ({
         priceValue: JSON.stringify(validatedPrice),
         creator: item.creator,
       });
+      
       await MarketplaceService.buyNFT(
         item.assetCode,
         publicKey,
         validatedPrice,
         item.creator,
-        signAndSubmitTransaction
+        signAndSubmitFunc
       );
+      
       toast.success(`Successfully purchased ${item.name} for ${validatedPrice} XLM!`, {
         position: 'top-center',
       });
@@ -110,7 +163,22 @@ const ItemDetailsModal = ({
     
     try {
       setIsLoading(true);
-      await buyWithMoonpay(item.id, item.price);
+      
+      // Create NFT details object with all necessary properties for MoonPay
+      const nftDetails = {
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        image: item.image,
+        price: item.price,
+        creator: item.creator,
+        contractAddress: item.contractAddress || `stellar:${item.id}`
+      };
+      
+      console.log('Initiating MoonPay NFT purchase with details:', nftDetails);
+      
+      // Pass the NFT details to MoonPay
+      await buyWithMoonpay(item.id, item.price, nftDetails);
       toast.success('Purchase initiated!', { position: 'top-center' });
       onHide(); // Close modal after initiating purchase
     } catch (error) {
@@ -222,14 +290,27 @@ const ItemDetailsModal = ({
                 {isLoading ? 'Buying...' : `Buy for ${item.price} XLM`}
               </Button>
               
-              <Button
-                variant="primary"
-                onClick={handleBuyWithCard}
-                disabled={isLoading || !(isWeb3AuthLoggedIn || isWalletConnected)}
-                className="buy-button mb-3"
+              <OverlayTrigger
+                placement="top"
+                overlay={
+                  <Tooltip id="moonpay-info-tooltip">
+                    Purchase XLM with a credit/debit card to buy this NFT. After your XLM arrives, you can complete the purchase.
+                  </Tooltip>
+                }
               >
-                {isLoading ? 'Processing...' : 'Buy with Card'}
-              </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleBuyWithCard}
+                  disabled={isLoading || !(isWeb3AuthLoggedIn || isWalletConnected)}
+                  className="buy-button mb-3"
+                >
+                  {isLoading ? 'Processing...' : (
+                    <>
+                      Buy with Card 
+                    </>
+                  )}
+                </Button>
+              </OverlayTrigger>
               
               <Form onSubmit={handleBidSubmit}>
                 <Form.Group className="mb-3">

@@ -131,10 +131,11 @@ class Web3AuthStellarService {
   /**
    * Initialize Moonpay for purchasing XLM with fiat
    * @param {string} publicKey - The recipient public key 
-   * @param {number} amount - The amount to purchase in fiat
+   * @param {number} amount - The amount to purchase in XLM or price of NFT
+   * @param {object} nftDetails - Optional NFT details for direct NFT purchase
    * @returns {object} - The Moonpay URL
    */
-  initializeMoonpayPurchase(publicKey, amount = 10) {
+  async initializeMoonpayPurchase(publicKey, amount = 10, nftDetails = null) {
     try {
       if (!publicKey) {
         throw new Error('Public key is required');
@@ -146,23 +147,57 @@ class Web3AuthStellarService {
         throw new Error('MoonPay API key is not configured');
       }
       
-      const environment = process.env.NODE_ENV === 'production' ? 'production' : 'sandbox';
+      const environment = import.meta.env.VITE_MOONPAY_ENVIRONMENT || 'sandbox';
       
-      // Base URL for MoonPay widget
+      // Base URL for MoonPay widget - for both regular and NFT purchases
       const baseUrl = environment === 'production' 
         ? 'https://buy.moonpay.com' 
         : 'https://buy-sandbox.moonpay.com';
       
-      // Setup MoonPay parameters
+      // Get real-time XLM to USD conversion rate
+      let xlmToUsdRate = 0.11; // Default fallback rate
+      try {
+        // Attempt to get real-time rate with timeout and error handling
+        const response = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd', {
+          timeout: 5000, // 5 second timeout
+          validateStatus: status => status === 200, // Only accept 200 OK responses
+        }).catch(error => {
+          console.warn('CoinGecko API request failed:', error.message);
+          return null; // Return null so we can check for it and use fallback
+        });
+        
+        // Check if we got a valid response with data
+        if (response && response.data && response.data.stellar && response.data.stellar.usd) {
+          xlmToUsdRate = response.data.stellar.usd;
+          console.log(`Current XLM to USD rate: $${xlmToUsdRate}`);
+        } else {
+          console.warn('Failed to get valid XLM rate data from CoinGecko, using fallback rate');
+        }
+      } catch (rateError) {
+        // Fallback to a default rate if API fails
+        console.warn('Failed to get real-time XLM rate, using fallback rate:', xlmToUsdRate, rateError);
+      }
+      
+      // For NFT purchases - we'll convert the XLM amount to USD
+      let fiatAmount = amount;
+      
+      // If amount is provided, use it as the XLM price that needs conversion
+      if (amount && amount > 0) {
+        fiatAmount = (amount * xlmToUsdRate).toFixed(2);
+        console.log(`Converting ${amount} XLM to approximately $${fiatAmount} USD`);
+      }
+      
+      // Setup MoonPay parameters for XLM purchase
       const params = new URLSearchParams({
         apiKey,
         currencyCode: 'xlm',
         walletAddress: publicKey,
-        baseCurrencyAmount: amount,
+        baseCurrencyAmount: fiatAmount,
+        baseCurrencyCode: 'usd', // Default to USD
         redirectURL: window.location.origin
       });
       
-      // Generate the full URL for the MoonPay widget
+      // Generate the URL for regular XLM purchase
       const url = `${baseUrl}?${params.toString()}`;
       
       // Return configuration for client-side initialization
@@ -171,9 +206,16 @@ class Web3AuthStellarService {
         apiKey,
         currencyCode: 'xlm',
         walletAddress: publicKey,
-        baseCurrencyAmount: amount,
+        baseCurrencyAmount: fiatAmount,
+        baseCurrencyCode: 'usd',
         environment,
-        redirectURL: window.location.origin
+        redirectURL: window.location.origin,
+        // Add NFT details if provided (for reference only)
+        nftDetails: nftDetails ? {
+          id: nftDetails.id,
+          name: nftDetails.name,
+          image: nftDetails.image
+        } : null
       };
     } catch (error) {
       console.error('Error initializing Moonpay purchase:', error);

@@ -1,22 +1,25 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWallet } from '../../contexts/WalletContext';
 import { useWalletConnect } from './WalletConnectProvider'; 
 import { useWeb3Auth } from './Web3AuthProvider';
 import { Badge } from 'react-bootstrap';
-import { FaWallet, FaUserCircle } from 'react-icons/fa';
+import { FaWallet, FaUserCircle, FaCoins } from 'react-icons/fa';
+import useUnifiedWallet from '../../hooks/useUnifiedWallet';
 
 const WalletStatusIndicator = () => {
   // Get state from all wallet providers
   const { 
     isLoggedIn: isWalletContextLoggedIn, 
     publicKey: walletContextKey, 
-    authType
+    authType,
+    walletBalance: web3AuthBalance
   } = useWallet();
   
   const { 
     isConnected: isWalletConnected, 
     publicKey: walletConnectKey,
-    walletMethod 
+    walletMethod,
+    balanceInXLM
   } = useWalletConnect();
 
   const {
@@ -24,9 +27,26 @@ const WalletStatusIndicator = () => {
     publicKey: web3AuthKey
   } = useWeb3Auth();
   
+  const { walletBalance } = useUnifiedWallet();
+  const [formattedBalance, setFormattedBalance] = useState('0.00');
+  
   // Determine connection status - include web3AuthConnected state
   const isConnected = isWalletContextLoggedIn || isWalletConnected || isWeb3AuthConnected;
   const publicKey = walletContextKey || walletConnectKey || web3AuthKey;
+  
+  // Update balance when it changes
+  useEffect(() => {
+    // Format balance based on which wallet is connected
+    if (walletBalance?.xlm) {
+      setFormattedBalance(parseFloat(walletBalance.xlm).toFixed(2));
+    } else if (balanceInXLM) {
+      setFormattedBalance(parseFloat(balanceInXLM).toFixed(2));
+    } else if (web3AuthBalance?.xlm) {
+      setFormattedBalance(parseFloat(web3AuthBalance.xlm).toFixed(2));
+    } else {
+      setFormattedBalance('0.00');
+    }
+  }, [walletBalance, balanceInXLM, web3AuthBalance]);
   
   // Determine connection type
   const getConnectionType = () => {
@@ -50,7 +70,7 @@ const WalletStatusIndicator = () => {
   };
 
   // For debugging
-  React.useEffect(() => {
+  useEffect(() => {
     if (isConnected) {
       console.log('WalletStatusIndicator - Connected with key:', publicKey);
     }
@@ -63,7 +83,9 @@ const WalletStatusIndicator = () => {
           <Badge bg="success" className="me-2">
             <FaWallet className="me-1" /> {getConnectionType()}
           </Badge>
-          <small className="text-muted">{formatPublicKey(publicKey)}</small>
+          <small className="text-muted">
+            <FaCoins className="me-1" />{formattedBalance} XLM
+          </small>
         </>
       ) : (
         <Badge bg="secondary">

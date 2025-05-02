@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { Modal, Button, Form } from 'react-bootstrap';
-import { FaHeart, FaShareAlt } from 'react-icons/fa';
+import React, { useState, useEffect } from 'react';
+import { Modal, Button, Form, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { FaHeart, FaShareAlt, FaInfoCircle } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import useUnifiedWallet from '../../hooks/useUnifiedWallet';
+import { useWeb3Auth } from './Web3AuthProvider';
 import './ItemDetailsModal.css';
 
 const NFTDetailsModal = ({ 
@@ -17,13 +18,31 @@ const NFTDetailsModal = ({
   const [error, setError] = useState(null);
   const [bidAmount, setBidAmount] = useState('');
   
-  // Use the unified wallet hook for combined wallet state
+  // Use both wallet hooks to ensure we capture all connection states
   const {
     isConnected,
+    isWeb3AuthLoggedIn,
     publicKey,
     buyWithMoonpay,
     signAndSubmitTransaction
   } = useUnifiedWallet();
+  
+  // Direct connection to Web3Auth context
+  const { isConnected: isWeb3AuthDirectConnected } = useWeb3Auth();
+  
+  // Combined connection state that includes direct Web3Auth connection
+  const isUserConnected = isConnected || isWeb3AuthDirectConnected;
+  
+  // Log connection status when it changes
+  useEffect(() => {
+    console.log('NFTDetailsModal - Connection status:', {
+      unifiedIsConnected: isConnected,
+      web3AuthLoggedIn: isWeb3AuthLoggedIn,
+      web3AuthDirectConnected: isWeb3AuthDirectConnected,
+      combinedStatus: isUserConnected,
+      publicKey
+    });
+  }, [isConnected, isWeb3AuthLoggedIn, isWeb3AuthDirectConnected, isUserConnected, publicKey]);
 
   // Price validation helper
   const validatePrice = (price) => {
@@ -41,7 +60,7 @@ const NFTDetailsModal = ({
 
   // Handle buying with XLM
   const handleBuy = async () => {
-    if (!isConnected || !publicKey) {
+    if (!isUserConnected) {
       toast.error('Please connect your wallet first', { position: 'top-center' });
       return;
     }
@@ -61,7 +80,7 @@ const NFTDetailsModal = ({
 
   // Handle buying with card via MoonPay
   const handleBuyWithCard = async () => {
-    if (!isConnected || !publicKey) {
+    if (!isUserConnected) {
       toast.error('Please connect your wallet first', { position: 'top-center' });
       return;
     }
@@ -69,7 +88,20 @@ const NFTDetailsModal = ({
     try {
       setIsLoading(true);
       console.log("Initiating MoonPay purchase for:", item.name);
-      await buyWithMoonpay(item.id, item.price);
+      
+      // Create NFT details object with all necessary properties for MoonPay
+      const nftDetails = {
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        image: item.image,
+        price: item.price,
+        creator: item.creator,
+        contractAddress: item.contractAddress || `stellar:${item.id}`
+      };
+      
+      // Pass the NFT details to MoonPay
+      await buyWithMoonpay(item.id, item.price, nftDetails);
       toast.success('Purchase initiated!', { position: 'top-center' });
       onHide(); // Close modal after initiating purchase
     } catch (error) {
@@ -84,7 +116,7 @@ const NFTDetailsModal = ({
   // Handle bid submission
   const handleBidSubmit = (e) => {
     e.preventDefault();
-    if (!isConnected) {
+    if (!isUserConnected) {
       toast.error('Please connect your wallet first', { position: 'top-center' });
       return;
     }
@@ -164,21 +196,34 @@ const NFTDetailsModal = ({
               <Button
                 variant="success"
                 onClick={handleBuy}
-                disabled={isLoading || !isConnected}
+                disabled={isLoading || !isUserConnected}
                 className="buy-button mb-3"
               >
                 {isLoading ? 'Buying...' : `Buy for ${item.price} XLM`}
               </Button>
               
               {/* Buy with card button */}
-              <Button
-                variant="primary"
-                onClick={handleBuyWithCard}
-                disabled={isLoading || !isConnected}
-                className="buy-button mb-3"
+              <OverlayTrigger
+                placement="top"
+                overlay={
+                  <Tooltip id="moonpay-info-tooltip">
+                    Purchase XLM with a credit/debit card to buy this NFT. After your XLM arrives, you can complete the purchase.
+                  </Tooltip>
+                }
               >
-                {isLoading ? 'Processing...' : 'Buy with Card'}
-              </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleBuyWithCard}
+                  disabled={isLoading || !isUserConnected}
+                  className="buy-button mb-3"
+                >
+                  {isLoading ? 'Processing...' : (
+                    <>
+                      Buy with Card <FaInfoCircle style={{ marginLeft: '5px', fontSize: '0.8em' }} />
+                    </>
+                  )}
+                </Button>
+              </OverlayTrigger>
               
               {/* Bid form */}
               <Form onSubmit={handleBidSubmit}>
@@ -197,7 +242,7 @@ const NFTDetailsModal = ({
                   variant="primary" 
                   type="submit" 
                   className="bid-button"
-                  disabled={!isConnected}
+                  disabled={!isUserConnected}
                 >
                   Place Bid
                 </Button>

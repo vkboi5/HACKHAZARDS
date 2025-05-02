@@ -370,12 +370,15 @@ export const WalletProvider = ({ children }) => {
   // Handle wallet creation and setup
   const handleStellarWalletCreation = async (privateKey) => {
     try {
-      // Create a new instance of StellarWalletsKit instead of using static build method
+      // Create a new instance of StellarWalletsKit 
       const walletKit = new StellarWalletsKit({
         network: GALERIE_CONFIG.STELLAR_NETWORK === "TESTNET" 
           ? WalletNetwork.TESTNET 
           : WalletNetwork.PUBLIC
       });
+      
+      // Save the wallet kit in state
+      setStellarKit(walletKit);
 
       const wallet = await web3AuthStellarService.createStellarWallet(privateKey);
       
@@ -417,20 +420,32 @@ export const WalletProvider = ({ children }) => {
         localStorage.removeItem('stellarPrivateKey');
       } catch (storageError) {
         console.error('Failed to store wallet data in IPFS:', storageError);
-        // Fallback to localStorage for this session only
+        // Fallback - keep the private key in localStorage until we can store it securely
         localStorage.setItem('tempPrivateKey', privateKey);
-        toast.warning("Using local storage as fallback for wallet data");
       }
       
-      // Load account balance
+      // Attempt to fund the account if it's new
+      try {
+        const accountData = await web3AuthStellarService.fundAccount(publicKey);
+        if (accountData.isNew) {
+          console.log('New account funded successfully');
+        } else {
+          console.log('Existing account detected, no funding needed');
+        }
+      } catch (fundingError) {
+        console.error('Error funding account:', fundingError);
+        // Non-fatal error - account might already exist or funding might not be necessary
+      }
+      
+      // Load initial balance
       await refreshBalance();
       
       return publicKey;
     } catch (error) {
-      console.error("Error creating/setting up Stellar wallet:", error);
+      console.error("Error creating Stellar wallet:", error);
       setError("Failed to create Stellar wallet: " + error.message);
-      toast.error("Wallet setup failed");
-      return null;
+      toast.error("Failed to setup your wallet");
+      throw error;
     }
   };
 
@@ -647,75 +662,135 @@ export const WalletProvider = ({ children }) => {
     }
   };
 
-  const buyWithMoonpay = async (amount) => {
-    if (!isLoggedIn || !publicKey) {
-      toast.error("Please log in and create a wallet first");
-      return;
-    }
-
+  const buyWithMoonpay = async (nftId, amount, nftDetails = null) => {
     try {
-      console.log("Initializing MoonPay purchase with wallet:", { publicKey });
-      const moonpayConfig = await web3AuthStellarService.initializeMoonpayPurchase(publicKey, amount);
+      console.log("Initializing MoonPay purchase with wallet:", { publicKey, amount, nftId });
+      
+      // Create NFT details object if nftId is provided but nftDetails isn't
+      const nftDetailsToUse = nftDetails || (nftId ? { id: nftId } : null);
+      
+      if (nftDetailsToUse) {
+        console.log("Using NFT details for MoonPay purchase:", nftDetailsToUse);
+      }
+      
+      const moonpayConfig = await web3AuthStellarService.initializeMoonpayPurchase(
+        publicKey, 
+        amount, 
+        nftDetailsToUse
+      );
       
       if (!moonpayConfig || !moonpayConfig.url) {
         throw new Error("Failed to initialize MoonPay - missing configuration or URL");
       }
       
       // Check if we have the MoonPay SDK available
-      if (!window.MoonPayWebSdk) {
-        console.log("Loading MoonPay SDK");
-        // Try to open directly instead
-        const moonpayWindow = window.open(moonpayConfig.url, "_blank");
+      if (typeof window.MoonPay === 'undefined') {
+        console.log("MoonPay SDK not available, adding the script dynamically");
         
-        // Check if popup was blocked
-        if (!moonpayWindow || moonpayWindow.closed || typeof moonpayWindow.closed === 'undefined') {
-          toast.error("Popup blocked! Please allow popups for this site.");
-          return null;
+        try {
+          // Try to add the SDK dynamically
+          const script = document.createElement('script');
+          script.src = 'https://sdk.moonpay.com/sdk.js';
+          script.async = true;
+          
+          // Create a promise to wait for the script to load
+          const scriptLoadPromise = new Promise((resolve, reject) => {
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('Failed to load MoonPay SDK script'));
+          });
+          
+          document.head.appendChild(script);
+          await scriptLoadPromise;
+          console.log("MoonPay SDK loaded dynamically");
+          
+          // Give a small delay for initialization
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (scriptError) {
+          console.error("Error loading MoonPay SDK script:", scriptError);
+          // Fallback to embedded iframe instead of opening in new tab
+          createMoonpayIframe(moonpayConfig.url);
+          toast.warning("Using embedded iframe for MoonPay purchase");
+          return moonpayConfig;
         }
-        
-        toast.success("MoonPay purchase window opened");
-        
-        // Create a mechanism to detect when the purchase is complete
-        const checkInterval = setInterval(() => {
-          if (moonpayWindow.closed) {
-            clearInterval(checkInterval);
-            // Refresh balance after window is closed
-            refreshBalance();
-            toast.info("Refreshing balance after MoonPay transaction");
-          }
-        }, 1000);
-        
-        return moonpayConfig;
       }
       
-      // Use MoonPay SDK if available
+      // Try to use MoonPay SDK
       try {
-        console.log("Using MoonPay SDK");
+        console.log("Initializing MoonPay widget");
+        
         // Initialize MoonPay widget
-        const moonpaySdk = new window.MoonPayWebSdk.default({
-          flow: 'buy',
-          environment: moonpayConfig.environment,
-          variant: 'overlay', // 'overlay' or 'drawer'
+        const moonpaySDK = new window.MoonPay.Modal({
+          environment: moonpayConfig.environment === 'production' ? 'production' : 'sandbox',
+          variant: 'overlay',
         });
         
-        // Open MoonPay widget with custom configuration
-        moonpaySdk.show({
+        // Configure for regular XLM purchase (works for both regular and NFT purchases)
+        const widgetConfig = {
           apiKey: moonpayConfig.apiKey,
-          currencyCode: moonpayConfig.currencyCode,
+          currencyCode: 'xlm',
           walletAddress: publicKey,
-          baseCurrencyAmount: amount,
-          redirectURL: window.location.origin
-        });
+          baseCurrencyCode: moonpayConfig.baseCurrencyCode || 'usd',
+          baseCurrencyAmount: moonpayConfig.baseCurrencyAmount,
+          redirectURL: window.location.origin,
+        };
+        
+        // Log the NFT information if this is an NFT purchase
+        if (nftDetailsToUse) {
+          console.log("Opening MoonPay for NFT purchase:", nftDetailsToUse.name || nftDetailsToUse.id);
+        }
+        
+        // Open MoonPay widget with configuration
+        moonpaySDK.open(widgetConfig);
         
         // Listen for transaction completion
-        moonpaySdk.on('onTransactionComplete', () => {
-          console.log('MoonPay transaction completed');
-          moonpaySdk.close();
+        moonpaySDK.on('onTransactionComplete', async (event) => {
+          console.log('MoonPay transaction completed:', event);
+          
+          // Try to get and store the private key after a successful transaction
+          if (web3Auth && web3Auth.connected) {
+            try {
+              const provider = web3Auth.provider;
+              if (provider) {
+                const privateKey = await provider.request({ method: "private_key" });
+                if (privateKey) {
+                  // Always store in localStorage for immediate use after MoonPay transaction
+                  localStorage.setItem('tempPrivateKey', privateKey);
+                  console.log('Stored Web3Auth key in localStorage after MoonPay transaction');
+                  
+                  // Attempt to store in IPFS as well
+                  try {
+                    const userInfo = await web3Auth.getUserInfo();
+                    const userIdentifier = userInfo.email || userInfo.sub || publicKey;
+                    
+                    await storeWalletData(publicKey, {
+                      privateKey,
+                      publicKey,
+                      network: GALERIE_CONFIG.STELLAR_NETWORK,
+                      createdAt: new Date().toISOString(),
+                      source: 'moonpay_transaction'
+                    }, userIdentifier);
+                    console.log('Stored private key to IPFS after MoonPay transaction');
+                  } catch (storageError) {
+                    console.warn('Could not store key to IPFS after MoonPay transaction:', storageError);
+                  }
+                }
+              }
+            } catch (keyError) {
+              console.warn('Could not retrieve private key after MoonPay transaction:', keyError);
+            }
+          }
+          
+          // Refresh balance
           refreshBalance();
-          toast.success('Purchase successful! Your balance will update shortly.');
+          
+          if (nftDetailsToUse) {
+            toast.success(`Purchase of XLM for NFT "${nftDetailsToUse.name || nftDetailsToUse.id}" successful! Your balance will update shortly.`);
+          } else {
+            toast.success('Purchase successful! Your balance will update shortly.');
+          }
         });
         
-        moonpaySdk.on('onClose', () => {
+        moonpaySDK.on('onClose', () => {
           console.log('MoonPay widget closed');
           // Attempt to refresh balance in case a transaction was completed
           refreshBalance();
@@ -724,10 +799,10 @@ export const WalletProvider = ({ children }) => {
         toast.success("MoonPay purchase initialized");
         return moonpayConfig;
       } catch (sdkError) {
-        console.error("Error initializing MoonPay SDK:", sdkError);
-        // Fallback to URL method
-        window.open(moonpayConfig.url, "_blank");
-        toast.warning("Using fallback method for MoonPay purchase");
+        console.error("Error initializing MoonPay widget:", sdkError);
+        // Fallback to embedded iframe instead of opening in new tab
+        createMoonpayIframe(moonpayConfig.url);
+        toast.warning("Using embedded iframe for MoonPay purchase");
         return moonpayConfig;
       }
     } catch (error) {
@@ -737,40 +812,229 @@ export const WalletProvider = ({ children }) => {
     }
   };
 
-  // Add a function to get the private key from IPFS or Web3Auth
-  const getPrivateKey = async () => {
+  // Helper function to create an embedded iframe for MoonPay
+  const createMoonpayIframe = (url) => {
+    // Remove any existing iframe
+    const existingIframe = document.getElementById('moonpay-iframe-container');
+    if (existingIframe) {
+      existingIframe.remove();
+    }
+    
+    // Create container for the iframe
+    const container = document.createElement('div');
+    container.id = 'moonpay-iframe-container';
+    container.style.position = 'fixed';
+    container.style.top = '0';
+    container.style.left = '0';
+    container.style.width = '100%';
+    container.style.height = '100%';
+    container.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    container.style.zIndex = '9999';
+    container.style.display = 'flex';
+    container.style.justifyContent = 'center';
+    container.style.alignItems = 'center';
+    
+    // Create the iframe
+    const iframe = document.createElement('iframe');
+    iframe.src = url;
+    iframe.style.width = '90%';
+    iframe.style.maxWidth = '500px';
+    iframe.style.height = '90%';
+    iframe.style.maxHeight = '700px';
+    iframe.style.border = 'none';
+    iframe.style.borderRadius = '12px';
+    iframe.style.backgroundColor = 'white';
+    
+    // Create close button
+    const closeButton = document.createElement('button');
+    closeButton.textContent = '×';
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '20px';
+    closeButton.style.right = '20px';
+    closeButton.style.backgroundColor = 'white';
+    closeButton.style.color = 'black';
+    closeButton.style.border = 'none';
+    closeButton.style.borderRadius = '50%';
+    closeButton.style.width = '40px';
+    closeButton.style.height = '40px';
+    closeButton.style.fontSize = '24px';
+    closeButton.style.cursor = 'pointer';
+    closeButton.style.display = 'flex';
+    closeButton.style.justifyContent = 'center';
+    closeButton.style.alignItems = 'center';
+    closeButton.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.2)';
+    
+    // Add click event to close button
+    closeButton.addEventListener('click', () => {
+      container.remove();
+      refreshBalance();
+    });
+    
+    // Add elements to the DOM
+    container.appendChild(iframe);
+    container.appendChild(closeButton);
+    document.body.appendChild(container);
+  };
+
+  // Sign a transaction with the user's private key from Web3Auth
+  const signTransaction = async (xdr) => {
     try {
-      // First try to get from IPFS
-      if (publicKey) {
-        // Get the same user identifier used for storage
-        let userIdentifier;
-        if (web3Auth && web3Auth.connected) {
-          try {
-            const userInfo = await web3Auth.getUserInfo();
-            userIdentifier = userInfo.email || userInfo.sub || publicKey;
-          } catch (e) {
-            console.error("Error getting Web3Auth user info:", e);
-            userIdentifier = publicKey;
-          }
-        } else if (authType === 'traditional') {
-          const currentUser = authService.getCurrentUser();
-          userIdentifier = currentUser?.email || publicKey;
-        } else {
-          userIdentifier = publicKey;
-        }
+      console.log("WalletContext: Signing transaction with Web3Auth", { publicKey, isLoggedIn });
+      
+      if (!isLoggedIn || !publicKey) {
+        throw new Error("Wallet not connected or user not logged in");
+      }
+      
+      // Get the network configuration
+      const networkPassphrase = GALERIE_CONFIG.STELLAR_NETWORK === "TESTNET" 
+        ? Networks.TESTNET 
+        : Networks.PUBLIC;
+      
+      // Get the private key securely
+      const privateKey = await getPrivateKey();
+      if (!privateKey) {
+        throw new Error("Could not retrieve private key");
+      }
+      
+      // Create a Stellar keypair from the private key
+      let keypair;
+      try {
+        // Try direct conversion first
+        keypair = Keypair.fromSecret(privateKey);
+        console.log("Created keypair directly from secret key");
+      } catch (keyError) {
+        console.log("Direct keypair creation failed, using deterministic approach");
         
-        const walletData = await retrieveWalletData(publicKey, userIdentifier);
-        if (walletData && walletData.privateKey) {
-          console.log('Retrieved private key from IPFS');
-          return walletData.privateKey;
+        try {
+          // Use a deterministic approach for Web3Auth keys
+          const encoder = new TextEncoder();
+          const data = encoder.encode(privateKey);
+          const hash = await crypto.subtle.digest('SHA-256', data);
+          const seed = new Uint8Array(hash).slice(0, 32);
+          keypair = Keypair.fromRawEd25519Seed(seed);
+          console.log("Created keypair from hashed private key");
+        } catch (seedError) {
+          console.error("Failed to create keypair from seed:", seedError);
+          throw new Error("Could not create a valid keypair: " + seedError.message);
         }
       }
       
-      // Then check localStorage (as fallback)
+      // Parse the XDR
+      const transaction = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+      
+      // Sign with the keypair
+      transaction.sign(keypair);
+      
+      // Get the server to submit the transaction
+      const horizonUrl = GALERIE_CONFIG.STELLAR_NETWORK === "TESTNET"
+        ? "https://horizon-testnet.stellar.org"
+        : "https://horizon.stellar.org";
+      const server = new StellarSdk.Horizon.Server(horizonUrl);
+      
+      // Submit the transaction
+      const result = await server.submitTransaction(transaction);
+      console.log("Transaction submitted successfully:", result);
+      
+      // Return the hash and signed XDR
+      return {
+        hash: result.hash,
+        signedXDR: transaction.toXDR()
+      };
+    } catch (error) {
+      console.error("Error signing transaction with Web3Auth:", error);
+      
+      if (error.response && error.response.data && error.response.data.extras) {
+        const { result_codes } = error.response.data.extras;
+        if (result_codes) {
+          const errorDetails = JSON.stringify(result_codes);
+          throw new Error(`Transaction failed: ${errorDetails}`);
+        }
+      }
+      
+      throw error;
+    }
+  };
+
+  // Add a function to get the private key from IPFS or Web3Auth
+  const getPrivateKey = async () => {
+    try {
+      // First try to get from localStorage (as primary fallback)
       const storedKey = localStorage.getItem('tempPrivateKey');
       if (storedKey) {
         console.log('Retrieved private key from localStorage');
+        
+        // If we have a publicKey, try to also store in IPFS for future use (if not already there)
+        if (publicKey && isLoggedIn) {
+          try {
+            // Get user identifier
+            let userIdentifier;
+            if (web3Auth && web3Auth.connected) {
+              try {
+                const userInfo = await web3Auth.getUserInfo();
+                userIdentifier = userInfo.email || userInfo.sub || publicKey;
+              } catch (e) {
+                userIdentifier = publicKey;
+              }
+            } else if (authType === 'traditional') {
+              const currentUser = authService.getCurrentUser();
+              userIdentifier = currentUser?.email || publicKey;
+            } else {
+              userIdentifier = publicKey;
+            }
+            
+            // Check if already stored in IPFS to avoid redundant operations
+            const walletRefs = JSON.parse(localStorage.getItem('walletRefs') || '{}');
+            if (!walletRefs[publicKey]) {
+              // Store the key in IPFS for future use
+              await storeWalletData(publicKey, {
+                privateKey: storedKey,
+                publicKey,
+                network: GALERIE_CONFIG.STELLAR_NETWORK,
+                createdAt: new Date().toISOString(),
+                source: 'localStorage_backup'
+              }, userIdentifier);
+              console.log('Stored localStorage key to IPFS for future use');
+            }
+          } catch (storageError) {
+            console.warn('Could not sync localStorage key to IPFS:', storageError);
+            // Non-fatal error, we can still use the localStorage key
+          }
+        }
+        
         return storedKey;
+      }
+      
+      // Then try to get from IPFS
+      if (publicKey) {
+        try {
+          // Get the same user identifier used for storage
+          let userIdentifier;
+          if (web3Auth && web3Auth.connected) {
+            try {
+              const userInfo = await web3Auth.getUserInfo();
+              userIdentifier = userInfo.email || userInfo.sub || publicKey;
+            } catch (e) {
+              console.error("Error getting Web3Auth user info:", e);
+              userIdentifier = publicKey;
+            }
+          } else if (authType === 'traditional') {
+            const currentUser = authService.getCurrentUser();
+            userIdentifier = currentUser?.email || publicKey;
+          } else {
+            userIdentifier = publicKey;
+          }
+          
+          const walletData = await retrieveWalletData(publicKey, userIdentifier);
+          if (walletData && walletData.privateKey) {
+            console.log('Retrieved private key from IPFS');
+            // Store in localStorage as backup for future use
+            localStorage.setItem('tempPrivateKey', walletData.privateKey);
+            return walletData.privateKey;
+          }
+        } catch (ipfsError) {
+          console.warn('Error retrieving from IPFS, falling back to other methods:', ipfsError);
+          // Continue to next method
+        }
       }
       
       // Then try to get from Web3Auth if connected
@@ -781,40 +1045,47 @@ export const WalletProvider = ({ children }) => {
             console.log('Requesting private key from Web3Auth provider');
             const privateKey = await provider.request({ method: "private_key" });
             
-            // If we successfully retrieved it, store it in IPFS for future use
-            if (privateKey && publicKey) {
-              try {
-                // Get user identifier
-                let userIdentifier;
+            if (privateKey) {
+              // Always store in localStorage for immediate use
+              localStorage.setItem('tempPrivateKey', privateKey);
+              console.log('Stored Web3Auth key in localStorage');
+              
+              // If we have a publicKey, try to also store in IPFS for future use
+              if (publicKey) {
                 try {
-                  const userInfo = await web3Auth.getUserInfo();
-                  userIdentifier = userInfo.email || userInfo.sub || publicKey;
-                } catch {
-                  userIdentifier = publicKey;
+                  // Get user identifier
+                  let userIdentifier;
+                  try {
+                    const userInfo = await web3Auth.getUserInfo();
+                    userIdentifier = userInfo.email || userInfo.sub || publicKey;
+                  } catch {
+                    userIdentifier = publicKey;
+                  }
+                  
+                  // Store the key for future use
+                  await storeWalletData(publicKey, {
+                    privateKey,
+                    publicKey,
+                    network: GALERIE_CONFIG.STELLAR_NETWORK,
+                    createdAt: new Date().toISOString(),
+                    source: 'web3auth_retrieval'
+                  }, userIdentifier);
+                  console.log('Retrieved and stored private key from Web3Auth');
+                } catch (storageError) {
+                  console.warn('Could not store retrieved Web3Auth key in IPFS:', storageError);
+                  // Non-fatal error since we have localStorage backup
                 }
-                
-                // Store the key for future use
-                await storeWalletData(publicKey, {
-                  privateKey,
-                  publicKey,
-                  network: GALERIE_CONFIG.STELLAR_NETWORK,
-                  createdAt: new Date().toISOString(),
-                  source: 'web3auth_retrieval'
-                }, userIdentifier);
-                console.log('Retrieved and stored private key from Web3Auth');
-              } catch (storageError) {
-                console.warn('Could not store retrieved Web3Auth key in IPFS:', storageError);
               }
+              
+              return privateKey;
             }
-            
-            return privateKey;
           } catch (e) {
             console.error("Error getting private key from provider:", e);
           }
         }
       }
       
-      throw new Error('No private key available');
+      throw new Error('No private key available from any source');
     } catch (error) {
       console.error('Error retrieving private key:', error);
       throw error;
@@ -838,7 +1109,8 @@ export const WalletProvider = ({ children }) => {
         buyWithMoonpay,
         stellarKit,
         authType,
-        getPrivateKey // Add this function to the context
+        getPrivateKey,
+        signTransaction
       }}
     >
       {children}

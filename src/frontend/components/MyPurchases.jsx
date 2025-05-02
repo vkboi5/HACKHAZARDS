@@ -8,6 +8,9 @@ import loaderGif from './loader.gif';
 import './MyPurchases.css';
 import { Alert, Container } from 'react-bootstrap';
 
+// Define a local placeholder image as a data URI to avoid external requests
+const placeholderImg = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAMAAABOo35HAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyBpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMC1jMDYwIDYxLjEzNDc3NywgMjAxMC8wMi8xMi0xNzo0MDowMCAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENTNSBXaW5kb3dzIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOjQ5MzAyRDQ5MDk5RDExRUJCODZBQzQyRDM0MUE1OThEIiB4bXBNTTpEb2N1bWVudElEPSJ4bXAuZGlkOjQ5MzAyRDRBMDk5RDExRUJCODZBQzQyRDM0MUE1OThEIj4gPHhtcE1NOkRlcml2ZWRGcm9tIHN0UmVmOmluc3RhbmNlSUQ9InhtcC5paWQ6NDkzMDJENDcwOTlEMTFFQkI4NkFDNDJEMzQxQTU5OEQiIHN0UmVmOmRvY3VtZW50SUQ9InhtcC5kaWQ6NDkzMDJENDgwOTlEMTFFQkI4NkFDNDJEMzQxQTU5OEQiLz4gPC9yZGY6RGVzY3JpcHRpb24+IDwvcmRmOlJERj4gPC94OnhtcG1ldGE+IDw/eHBhY2tldCBlbmQ9InIiPz7RDHxNAAAABlBMVEXR0dGzs7Pl+2dhAAAAHElEQVR42uzBAQ0AAADCIPuntscHAwAAAAAAAGACEkAAAcuJwlwAAAAASUVORK5CYII=';
+
 export default function MyPurchases() {
   const { publicKey: walletConnectPublicKey, isConnected: isWalletConnected, server } = useWalletConnect();
   const { publicKey: walletContextPublicKey, isLoggedIn: isWalletContextLoggedIn } = useWallet();
@@ -87,7 +90,7 @@ export default function MyPurchases() {
                 ? metadata.image
                 : metadata.image
                 ? `${import.meta.env.VITE_IPFS_GATEWAY}${metadata.image}`
-                : 'https://via.placeholder.com/300',
+                : placeholderImg,
               price: metadata.price || '0',
               assetCode,
               issuer,
@@ -116,7 +119,7 @@ export default function MyPurchases() {
             id: `${wonBid.assetCode}-pending`,
             name: wonBid.name || wonBid.assetCode,
             description: 'Transaction processing...',
-            image: wonBid.image || 'https://via.placeholder.com/300',
+            image: wonBid.image || placeholderImg,
             price: wonBid.price || '0',
             assetCode: wonBid.assetCode,
             issuer: wonBid.seller,
@@ -171,7 +174,7 @@ export default function MyPurchases() {
                 id: `${saleData.nftAssetCode}-pinata`,
                 name: saleData.nftAssetCode,
                 description: 'Details will be available soon',
-                image: 'https://via.placeholder.com/300',
+                image: placeholderImg,
                 price: saleData.price || '0',
                 assetCode: saleData.nftAssetCode,
                 issuer: saleData.issuerPublicKey,
@@ -245,13 +248,13 @@ export default function MyPurchases() {
                       alt={item.name}
                       className="card-img-purchase"
                       onError={(e) => {
-                        e.target.src = 'https://via.placeholder.com/300';
+                        e.target.onerror = null; // Prevent infinite loop
+                        e.target.src = placeholderImg;
                       }}
                     />
                     <div className="card-footer-custom-purchase">
                       <span className="card-text-purchase">{item.name}</span>
                       <span className="card-text-purchase">Price: {item.price} XLM</span>
-                      <span className="card-text-purchase">Balance: {item.balance}</span>
                       {item.status === 'pending' && (
                         <span className="card-text-purchase status-pending">Status: Processing</span>
                       )}
